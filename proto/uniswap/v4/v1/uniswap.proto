@@ -67,6 +67,31 @@ message Swap {
   int32  tick         = 8;
   uint32 fee          = 9;   // the fee ACTUALLY charged — a hook may override it
   Meta   meta         = 10;
+
+  // ---- denormalised pool identity (fields 11-15) ----------------------------
+  // A V4 Swap log carries ONLY the poolId. The tokens, the configured fee, the
+  // tick spacing and the hook all live in the PoolKey, which is hashed away at
+  // initialize time and never re-emitted. A consumer streaming from a recent
+  // block therefore cannot tell what a swap traded without backfilling to that
+  // pool's Initialize event — possibly millions of blocks earlier. The subgraph
+  // hides this behind its entity store (`Pool.load(poolId)`); Substreams has no
+  // implicit store, so the join has to be explicit (store_pools) and the result
+  // has to be carried on the row.
+  //
+  // These are EMPTY on the raw `map_events` output — that module sees one block
+  // and cannot know about a pool initialised before it. They are filled by the
+  // enriching module that reads `store_pools`. An empty `token0` means "pool not
+  // in the store yet", i.e. initialised before this package's initialBlock, NOT
+  // "the pool has no token0".
+  string token0       = 11;
+  string token1       = 12;
+  // The pool's CONFIGURED fee from the PoolKey — deliberately a different field
+  // from `fee` above, which is the fee this particular swap actually paid. On a
+  // dynamic-fee pool the two differ on every row, and collapsing them is exactly
+  // the bug in the source subgraph (`pool.feeTier = event.params.fee`).
+  uint64 fee_tier     = 13;
+  int32  tick_spacing = 14;
+  HookPermissions hook = 15;
 }
 
 message ModifyLiquidity {
@@ -78,6 +103,16 @@ message ModifyLiquidity {
   string liquidity_delta = 6;   // signed: add vs remove
   string salt        = 7;
   Meta   meta        = 8;
+
+  // ---- denormalised pool identity (fields 9-13) -----------------------------
+  // Same rationale as Swap: the ModifyLiquidity log carries only the poolId, so
+  // "which token pair did this LP add to" is unanswerable from the row alone.
+  // Filled from `store_pools` by the enriching module; empty on raw map_events.
+  string token0      = 9;
+  string token1      = 10;
+  uint64 fee_tier    = 11;
+  int32  tick_spacing = 12;
+  HookPermissions hook = 13;
 }
 
 message PositionEvent {
@@ -100,10 +135,148 @@ message HookDeployment {
   Meta   meta     = 7;
 }
 
+// Running per-pool aggregates, carried forward across blocks by the stats store.
+//
+// This is the "what has this pool actually done" row that the subgraph answers
+// with `Pool.txCount` / `volumeToken0`. Emitted only for pools TOUCHED in the
+// current block — a full snapshot of every pool on every block would be O(pools)
+// output per block for no new information.
+message PoolStats {
+  string pool_id  = 1;
+  // Denormalised from the pool so the stats row is self-describing: a consumer
+  // ranking pools by volume should not need a second lookup to name them.
+  string token0   = 2;
+  string token1   = 3;
+  uint64 swap_count = 4;
+  // ABSOLUTE-value sums, as decimal BigInt strings in RAW token units.
+  //
+  // Absolute because V4 swap amounts are signed and swapper-centric (one leg
+  // negative, one positive): a plain sum of `amount0` over a two-sided market
+  // trends to zero and measures net flow, not volume. `abs` is the standard
+  // volume convention and is the only one recoverable here — netting can be
+  // derived from the raw swap rows, but volume cannot be recovered from a net.
+  //
+  // Raw units, NOT decimal-adjusted: token decimals need a per-token RPC lookup
+  // that this package deliberately does not pay for (see README "Known gaps").
+  // String, not uint64, because a uint256 volume overflows 64 bits routinely.
+  string volume_token0_abs = 5;
+  string volume_token1_abs = 6;
+  uint64 modify_liquidity_count = 7;
+  HookPermissions hook = 8;
+  // Block of the most recent event folded into these counters. Lets a sink
+  // detect staleness and lets an upsert be idempotent on replay.
+  uint64 last_block = 9;
+}
+
+// Running per-HOOK aggregates — the roll-up the source subgraph cannot produce
+// at all, because it stores `hooks` as an opaque string and has no hook entity.
+//
+// One hook contract typically serves many pools, so this is the level at which
+// "is this hook extracting fees / how much flow does it control" is answerable.
+message HookStats {
+  string hook_address = 1;
+  HookPermissions permissions = 2;
+  uint64 pool_count = 3;
+  uint64 swap_count = 4;
+  string volume_token0_abs = 5;
+  string volume_token1_abs = 6;
+  // How many DISTINCT effective `Swap.fee` values this hook has charged. A
+  // static-fee hook converges to 1; a hook actively repricing per swap does not.
+  // Cheap, and it is the single clearest signal that a hook is doing real
+  // dynamic-fee work rather than just holding the permission bit.
+  uint64 distinct_fee_values = 7;
+  uint64 last_block = 8;
+}
+
+// PoolManager `Donate(id, sender, amount0, amount1)` — a direct fee donation to
+// in-range LPs.
+//
+// Its own message rather than a row in `swaps`: pb::Swap has no kind
+// discriminator, so every donation would be counted as swap volume by any
+// consumer of `Events.swaps`. Zeroing sqrt_price_x96 as a sentinel is not viable
+// either — legitimate swap rows already carry a zero sqrtPriceX96 for
+// aggregator-hook pools, so the sentinel is taken.
+message Donate {
+  string id       = 1;   // <txHash>-<logIndex>
+  string pool_id  = 2;
+  string sender   = 3;
+  string amount0  = 4;   // uint256, raw token units
+  string amount1  = 5;
+  Meta   meta     = 6;
+}
+
+// ERC-6909 claim-token activity on the singleton: `Transfer(caller, from, to,
+// id, amount)`, `Approval(owner, spender, id, amount)`, `OperatorSet(owner,
+// operator, approved)`.
+//
+// This is V4's flash-accounting rail — how routers and searchers park value
+// INSIDE the PoolManager between swaps instead of settling to ERC-20. Nothing in
+// the V4 subgraph surfaces it, and it is the cleanest available signal for "who
+// is running multi-hop/atomic strategies on V4".
+//
+// One message with a `kind` discriminator rather than three, because the three
+// events share a subject (a currency balance held by the singleton) and every
+// consumer wants them on one timeline. pb::PositionEvent is the wrong home twice
+// over: its `token_id` means a PositionManager ERC-721 tokenId whereas the
+// ERC-6909 `id` is a CURRENCY id (uint256 of the currency address), and it has
+// nowhere at all to put `amount`.
+//
+// Fields not carried by a given `kind` are left at proto3 default (empty
+// string / false). Union-with-discriminator, not per-kind messages: three
+// near-identical messages would force every sink to fan out three tables for
+// one logical stream.
+message ClaimTokenEvent {
+  string id          = 1;   // <txHash>-<logIndex>
+  string kind        = 2;   // transfer | approval | operator_set
+  string caller      = 3;   // transfer: msg.sender (may differ from `from`)
+  string owner       = 4;   // approval / operator_set
+  string from        = 5;   // transfer
+  string to          = 6;   // transfer
+  string spender     = 7;   // approval
+  string operator    = 8;   // operator_set
+  // uint256 currency id = the currency's address widened to uint256. Kept as a
+  // decimal string rather than re-narrowed to an address, because that mapping
+  // is only valid by convention and a lossy rewrite would be unrecoverable.
+  string currency_id = 9;
+  string amount      = 10;  // uint256, transfer / approval
+  bool   approved    = 11;  // operator_set
+  Meta   meta        = 12;
+}
+
+// Governance-level fee config: `ProtocolFeeUpdated(id, protocolFee)` and
+// `ProtocolFeeControllerUpdated(protocolFeeController)`.
+//
+// The only on-chain record of protocol revenue being switched on for a pool.
+// A partial pb::Pool row is not an option: a sink upserting on `Pool.id` cannot
+// distinguish it from a pool creation and would zero out token0/token1/hook.
+message ProtocolFeeEvent {
+  string id       = 1;   // <txHash>-<logIndex>
+  string kind     = 2;   // fee_updated | controller_updated
+  string pool_id  = 3;   // fee_updated only — controller updates are global
+  // uint24, packed: low 12 bits = fee on 0->1, high 12 bits = fee on 1->0.
+  // Left packed because the split is a v4-core encoding detail that may change;
+  // the raw value is always recoverable.
+  uint32 protocol_fee = 4;
+  string controller = 5; // controller_updated only
+  Meta   meta     = 6;
+}
+
 message Events {
   repeated Pool            pools             = 1;
   repeated Swap            swaps             = 2;
   repeated ModifyLiquidity modify_liquidity  = 3;
   repeated PositionEvent   position_events   = 4;
   repeated HookDeployment  hook_deployments  = 5;
+
+  // ---- fields 6-10, additive ------------------------------------------------
+  // Aggregates for pools/hooks touched in this block only (see PoolStats).
+  repeated PoolStats        pool_stats          = 6;
+  repeated HookStats        hook_stats          = 7;
+  // Previously-unhomed PoolManager events. They were held out of the proto
+  // rather than forced into Swap or PositionEvent, where every candidate shape
+  // either lost a field outright or made the row indistinguishable from a real
+  // swap/position to a downstream aggregator.
+  repeated Donate           donates             = 8;
+  repeated ClaimTokenEvent  claim_token_events  = 9;
+  repeated ProtocolFeeEvent protocol_fee_events = 10;
 }

@@ -10,21 +10,22 @@ package:
     decoding from the low 14 bits of the hook address, the per-swap effective
     fee (which the subgraph overwrites), the ModifyLiquidity salt, and full
     position ownership history — none of which the source subgraph exposes.
-    Donate, ERC-6909 claim tokens and protocol-fee governance are decodable
-    from the same logs but have no message in the frozen proto contract, so
-    they are NOT emitted yet; see the block comment at the foot of
-    src/pool_manager.rs for the shapes they need.
+    Adds an explicit pool store so a Swap row carries its own tokens: a V4
+    Swap log emits only the poolId, and the tokens/fee/tickSpacing/hook live in
+    the PoolKey that was hashed away at initialize. store_pools remembers every
+    Initialize and map_enriched joins it back onto every swap and liquidity
+    row, plus per-block PoolStats and HookStats.
 
 network: base
 
 imports:
   database: https://github.com/streamingfast/substreams-sink-database-changes/releases/download/v4.0.0/substreams-sink-database-changes-v4.0.0.spkg
   sql: https://github.com/streamingfast/substreams-sink-sql/releases/download/protodefs-v1.0.7/substreams-sink-sql-protodefs-v1.0.7.spkg
-  # Block-level skip via the foundational filter. NOT enabled yet: it takes a
-  # single evt_addr param and this package watches three contracts, so turning
-  # it on without a verified multi-address SQE expression would silently drop
-  # events. The skill's own warning. Revisit once the expression is tested.
-  # eth_common: https://spkg.io/v1/packages/ethereum-common/v0.3.3
+  # Block-level skip (eth_common:filtered_events) deliberately NOT used.
+  # Measured, not assumed: 148 of 148 sampled Base blocks contain V4 activity —
+  # 100%. A block-index filter is a cost win only for SPARSE targets; here it
+  # would skip nothing and buy a dependency plus a footgun (it takes one
+  # evt_addr and this package watches three contracts).
 
 protobuf:
   files:
@@ -39,10 +40,25 @@ binaries:
     file: ./target/wasm32-unknown-unknown/release/uniswap_v4_substreams.wasm
 
 modules:
+  # ---------------------------------------------------------------------------
   # initialBlock is the PoolManager's deployment block, carried over from the
-  # subgraph's startBlock. The live subgraph GRAFTS at 26990278, meaning it
-  # never indexed its own early history; this backfills the real range in
-  # parallel instead.
+  # subgraph's startBlock, and it is set to the SAME value on every module. Two
+  # reasons it must not drift: a module whose initialBlock is above its input's
+  # silently produces nothing for the gap, and — specific to this package —
+  # store_pools starting late would miss Initialize events, so map_enriched
+  # would emit permanently un-enriched swaps for those pools with no error.
+  #
+  # The live subgraph GRAFTS at 26990278, meaning it never indexed its own early
+  # history. This backfills the real range in parallel instead. That is also
+  # what makes enrichment COMPLETE rather than best-effort here: no V4 pool on
+  # Base predates 25350988, so an empty token0 on a swap row means a genuine
+  # bug or a partial-range run, never "the pool is too old".
+  # ---------------------------------------------------------------------------
+
+  # Stage 1 — decode. Store-free and therefore independently cacheable, which is
+  # why it stays a public module instead of being folded into map_enriched: a
+  # consumer that wants raw logs pays nothing for the join, and re-running the
+  # join does not re-decode the chain.
   - name: map_events
     kind: map
     initialBlock: 25350988
@@ -51,11 +67,63 @@ modules:
     output:
       type: proto:uniswap.v4.v1.Events
 
-  - name: db_out
+  # Stage 2 — remember. One entry per pool, written once at Initialize, keyed
+  # "pool:<poolId>" (src/store_pools.rs owns both the writer and the pool_key
+  # builder that map_enriched reads with).
+  #
+  # updatePolicy: set + valueType proto:uniswap.v4.v1.Pool — the whole Pool
+  # record is needed downstream (including the 17-field HookPermissions
+  # submessage), so this reuses the prost encoding the proto already defines
+  # rather than inventing a second, schemaless delimited format whose writer and
+  # reader live in different modules.
+  - name: store_pools
+    kind: store
+    updatePolicy: set
+    valueType: proto:uniswap.v4.v1.Pool
+    initialBlock: 25350988
+    inputs:
+      - map: map_events
+
+  # Stage 3 — join. Input order MUST match the map_enriched signature in
+  # src/enrich.rs: (events, store). mode: get gives StoreGetProto<Pool>; the
+  # handler uses get_last, so a pool initialised and swapped in the SAME block
+  # (routinely the same transaction) still resolves — the store module for block
+  # N completes before any map depending on it runs for block N.
+  - name: map_enriched
     kind: map
     initialBlock: 25350988
     inputs:
       - map: map_events
+      - store: store_pools
+        mode: get
+    output:
+      type: proto:uniswap.v4.v1.Events
+
+  # ERC-20 metadata for the currencies a pool was initialised with. String
+  # store, "symbol<US>name<US>decimals<US>flags"; the flags field marks whether
+  # decimals was MEASURED or defaulted to 18 — never scale money by a defaulted
+  # value. This is the only module in the package that issues eth_calls, and it
+  # is deliberately OFF the map_enriched/db_out path: it is not required to
+  # answer "what did this swap trade" (the PoolKey already names the token
+  # addresses) and an RPC dependency should not be able to stall the main
+  # pipeline. Nothing consumes it yet — see README "Known gaps".
+  - name: store_tokens
+    kind: store
+    updatePolicy: set
+    valueType: string
+    initialBlock: 25350988
+    inputs:
+      - map: map_events
+
+  # Stage 4 — sink. Consumes map_enriched, NOT map_events: pointing it at
+  # map_events is exactly the defect this change fixes, and would leave
+  # swap.token0/token1/fee_tier/hook empty in Postgres and drop pool_stats /
+  # hook_stats entirely.
+  - name: db_out
+    kind: map
+    initialBlock: 25350988
+    inputs:
+      - map: map_enriched
     output:
       type: proto:sf.substreams.sink.database.v1.DatabaseChanges
 

@@ -76,6 +76,16 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // makes "effective fee over time per pool" answerable at all.
                 fee: ev.fee.to_u64() as u32,
                 meta: Some(meta),
+                // Denormalised pool identity (token0/token1/fee_tier/
+                // tick_spacing/hook) is left at proto3 default HERE ON PURPOSE.
+                // This module sees exactly one block and a Swap log carries only
+                // the poolId; the PoolKey was hashed away at Initialize, possibly
+                // millions of blocks back. Filling these is `map_enriched`'s job,
+                // reading `store_pools`. Writing a plausible zero address for
+                // token0 here would be worse than empty: 0x0 is a REAL currency
+                // on V4 (native ETH), so a guess would be indistinguishable from
+                // the truth.
+                ..Default::default()
             });
         } else if let Some(ev) = events::ModifyLiquidity::match_and_decode(log) {
             let meta = hooks::meta(blk, log.receipt.transaction, log.log);
@@ -98,6 +108,9 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // whenever one sender holds two salted positions on one range.
                 salt: bytes32_hex(&ev.salt),
                 meta: Some(meta),
+                // Same as Swap above: pool identity is filled by `map_enriched`
+                // from `store_pools`, not here.
+                ..Default::default()
             });
         } else if let Some(ev) = events::Initialize::match_and_decode(log) {
             let meta = hooks::meta(blk, log.receipt.transaction, log.log);

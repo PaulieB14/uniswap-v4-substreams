@@ -180,6 +180,45 @@ CREATE TABLE IF NOT EXISTS swap
     -- drops this field entirely.
     fee             INTEGER       NOT NULL,
 
+    -- DENORMALISED POOL IDENTITY -- the defect this schema version fixes.
+    --
+    -- A V4 Swap log carries ONLY the poolId. token0/token1/fee_tier/
+    -- tick_spacing/hook are fields of the PoolKey, keccak-hashed into the id at
+    -- initialize and never re-emitted, so "what did this swap trade" is
+    -- unanswerable from the raw row. These columns are filled by map_enriched
+    -- from the store_pools join.
+    --
+    -- Yes, this duplicates `pool`. That is the point: the alternative is a join
+    -- to `pool` on every single query against the largest table in the schema,
+    -- and the duplicated values are PoolKey-immutable, so they can never drift
+    -- from their source the way a denormalised mutable column would.
+    --
+    -- EMPTY STRING / 0 means "pool not in the store", never "the pool has no
+    -- token0". It should not occur: the package indexes from the PoolManager's
+    -- own deploy block, so every swappable pool was initialised inside range.
+    -- A non-empty count on `WHERE token0 = ''` means a partial-range run or a
+    -- genuine bug -- worth an alert, not a filter.
+    token0          VARCHAR(42)   NOT NULL DEFAULT '',
+    token1          VARCHAR(42)   NOT NULL DEFAULT '',
+    -- The pool's CONFIGURED fee, deliberately a separate column from `fee`
+    -- above (the fee this swap actually paid). On a dynamic-fee pool the two
+    -- differ on every row; collapsing them is precisely the source subgraph's
+    -- bug (`pool.feeTier = event.params.fee`). `fee <> fee_tier` is now a
+    -- single-table predicate: hook repricing, directly queryable.
+    fee_tier        BIGINT        NOT NULL DEFAULT 0,
+    tick_spacing    INTEGER       NOT NULL DEFAULT 0,
+    -- The hook is carried as address + raw flag MASK, not as the 14 unpacked
+    -- booleans that `pool` and `hook_deployment` get. On a table assumed to
+    -- reach billions of rows, 14 bools cost ~14 bytes/row to store a value that
+    -- is a pure function of a number already in the row: hook_flags IS the mask
+    -- the booleans were decoded from, so `hook_flags & 128 <> 0` is exactly
+    -- `hook_before_swap` with no information lost.
+    -- has_hook is NOT derivable from hook_flags (a hook can legally mine an
+    -- address with no permission bits set), so derive it from the address:
+    -- hook_address NOT IN ('', '0x0000000000000000000000000000000000000000').
+    hook_address    VARCHAR(42)   NOT NULL DEFAULT '',
+    hook_flags      INTEGER       NOT NULL DEFAULT 0,
+
     block_number    BIGINT        NOT NULL,
     block_timestamp BIGINT        NOT NULL,
     tx_hash         VARCHAR(66)   NOT NULL,
@@ -205,6 +244,19 @@ CREATE INDEX IF NOT EXISTS swap_origin_idx     ON swap (origin, block_number DES
 -- the PK is "<txHash>-<logIndex>", so a prefix match on the PK is a partial
 -- substitute (needs text_pattern_ops under a non-C collation).
 CREATE INDEX IF NOT EXISTS swap_tx_hash_idx    ON swap (tx_hash);
+-- The queries the denormalisation exists to make possible without a join.
+-- "All swaps in this token, newest first" -- previously a join to `pool`.
+CREATE INDEX IF NOT EXISTS swap_token0_idx     ON swap (token0, block_number DESC);
+CREATE INDEX IF NOT EXISTS swap_token1_idx     ON swap (token1, block_number DESC);
+-- "Everything routed through this hook". Partial: most Base pools are
+-- hookless, so this indexes the small, interesting subset.
+CREATE INDEX IF NOT EXISTS swap_hook_idx       ON swap (hook_address, block_number DESC)
+    WHERE hook_address <> '' AND hook_address <> '0x0000000000000000000000000000000000000000';
+-- Swaps where the hook actually moved the fee off the pool's configured tier.
+-- The single clearest "this hook is doing real dynamic-fee work" filter, and
+-- it is only expressible because fee and fee_tier are separate columns.
+CREATE INDEX IF NOT EXISTS swap_fee_override_idx ON swap (pool_id, block_number DESC)
+    WHERE fee <> fee_tier;
 
 -- ---------------------------------------------------------------------------
 -- modify_liquidity — IMMUTABLE. Mints, burns and fee collections all arrive as
@@ -223,6 +275,16 @@ CREATE TABLE IF NOT EXISTS modify_liquidity
     -- V4's per-owner position discriminator. bytes32, not an address.
     salt            VARCHAR(66)   NOT NULL,
 
+    -- Denormalised pool identity, same rationale and same "empty means not in
+    -- the store" contract as `swap` above. Without it, "which pair did this LP
+    -- provide to" needs a join for every row.
+    token0          VARCHAR(42)   NOT NULL DEFAULT '',
+    token1          VARCHAR(42)   NOT NULL DEFAULT '',
+    fee_tier        BIGINT        NOT NULL DEFAULT 0,
+    tick_spacing    INTEGER       NOT NULL DEFAULT 0,
+    hook_address    VARCHAR(42)   NOT NULL DEFAULT '',
+    hook_flags      INTEGER       NOT NULL DEFAULT 0,
+
     block_number    BIGINT        NOT NULL,
     block_timestamp BIGINT        NOT NULL,
     tx_hash         VARCHAR(66)   NOT NULL,
@@ -239,6 +301,10 @@ CREATE INDEX IF NOT EXISTS ml_block_brin_idx  ON modify_liquidity USING BRIN (bl
 -- The reason this table exists: liquidity-by-price-range analytics.
 CREATE INDEX IF NOT EXISTS ml_pool_range_idx  ON modify_liquidity (pool_id, tick_lower, tick_upper);
 CREATE INDEX IF NOT EXISTS ml_origin_idx      ON modify_liquidity (origin, block_number DESC);
+CREATE INDEX IF NOT EXISTS ml_token0_idx      ON modify_liquidity (token0, block_number DESC);
+CREATE INDEX IF NOT EXISTS ml_token1_idx      ON modify_liquidity (token1, block_number DESC);
+CREATE INDEX IF NOT EXISTS ml_hook_idx        ON modify_liquidity (hook_address, block_number DESC)
+    WHERE hook_address <> '' AND hook_address <> '0x0000000000000000000000000000000000000000';
 
 -- ---------------------------------------------------------------------------
 -- position_event — IMMUTABLE log of PositionManager NFT activity.
@@ -356,3 +422,248 @@ CREATE TABLE IF NOT EXISTS hook_deployment
 CREATE INDEX IF NOT EXISTS hd_hook_address_idx ON hook_deployment (hook_address);
 CREATE INDEX IF NOT EXISTS hd_factory_idx      ON hook_deployment (factory, block_number DESC);
 CREATE INDEX IF NOT EXISTS hd_block_idx        ON hook_deployment (block_number);
+
+-- ===========================================================================
+-- PER-BLOCK AGGREGATES
+-- ===========================================================================
+--
+-- READ THIS BEFORE QUERYING pool_stats / hook_stats.
+--
+-- These are per-BLOCK DELTAS, not running totals. `map_enriched` is a `map`
+-- module: it is stateless by definition and is re-executed out of order by
+-- parallel backfill workers, so it can only ever report what happened in the
+-- block it was handed. The proto comments describe these messages as "running
+-- aggregates carried forward by the stats store" -- that store does not exist
+-- yet, and until it does the numbers here are deltas.
+--
+-- The consequence is not symmetric across the columns:
+--
+--   * swap_count, modify_liquidity_count, volume_token0_abs, volume_token1_abs
+--     are ADDITIVE. SUM() over a block range is exactly correct.
+--   * pool_count and distinct_fee_values are SET CARDINALITIES. They do NOT
+--     sum. Adding a hook's per-block pool_count across 1000 blocks counts the
+--     same pool up to 1000 times. Answer those from the base tables instead:
+--       SELECT count(DISTINCT pool_id) FROM swap WHERE hook_address = $1;
+--       SELECT count(DISTINCT fee)     FROM swap WHERE hook_address = $1;
+--     They are still worth storing per block: within ONE block they are true,
+--     and the delta shape is what a materialised rollup would consume.
+--
+-- One row per (subject, block) touched. Pools and hooks with no activity in a
+-- block emit nothing -- a full snapshot every block would be O(pools) rows for
+-- no new information.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- pool_stats -- what each pool did in one block.
+--
+-- Synthetic single-column PK "<pool_id>-<block_number>" rather than a
+-- composite (pool_id, block_number) PK: the Database Changes protocol supports
+-- composite keys but the sink's support has varied across versions, and a
+-- single-column key keeps the write path on the same push_change call as every
+-- other table here. The two components are ALSO stored as real columns, so
+-- nothing needs to parse the id back apart.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pool_stats
+(
+    id                     VARCHAR(90)   NOT NULL,   -- "<pool_id>-<block>"
+    pool_id                VARCHAR(66)   NOT NULL,
+    block_number           BIGINT        NOT NULL,
+    -- Denormalised so a "top pools by volume" query names its rows without a
+    -- second lookup. Empty when the pool was not resolvable from store_pools.
+    token0                 VARCHAR(42)   NOT NULL DEFAULT '',
+    token1                 VARCHAR(42)   NOT NULL DEFAULT '',
+
+    swap_count             BIGINT        NOT NULL DEFAULT 0,
+    modify_liquidity_count BIGINT        NOT NULL DEFAULT 0,
+    -- ABSOLUTE-value sums in RAW token units (no decimal scaling -- see the
+    -- README's known gaps). Absolute because V4 amounts are signed and
+    -- swapper-centric: a plain sum measures net flow and converges to zero on
+    -- a two-sided market no matter how much traded. Netting stays derivable
+    -- from the signed `swap` rows; volume cannot be recovered from a net.
+    volume_token0_abs      NUMERIC(78,0) NOT NULL DEFAULT 0,
+    volume_token1_abs      NUMERIC(78,0) NOT NULL DEFAULT 0,
+
+    hook_address           VARCHAR(42)   NOT NULL DEFAULT '',
+    hook_flags             INTEGER       NOT NULL DEFAULT 0,
+
+    CONSTRAINT pool_stats_pk PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS pool_stats_pool_block_idx ON pool_stats (pool_id, block_number DESC);
+CREATE INDEX IF NOT EXISTS pool_stats_hook_idx       ON pool_stats (hook_address, block_number DESC)
+    WHERE hook_address <> '' AND hook_address <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX IF NOT EXISTS pool_stats_block_brin_idx ON pool_stats USING BRIN (block_number) WITH (pages_per_range = 128);
+
+-- ---------------------------------------------------------------------------
+-- hook_stats -- what each HOOK did in one block, across all the pools it
+-- serves. The roll-up the source subgraph cannot produce at all: it stores
+-- `hooks` as an opaque string and has no hook entity.
+--
+-- Hookless pools are deliberately ABSENT rather than bucketed under the zero
+-- address. A 0x0 row would be a chain-wide aggregate wearing a hook's clothes,
+-- and it poisons distinct_fee_values specifically -- pooling every hookless
+-- pool makes that count large purely because they sit on different static
+-- tiers, which reads identically to one hook repricing per swap.
+-- Pools that could not be resolved from store_pools are also absent, since the
+-- hook is precisely the unknown.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS hook_stats
+(
+    id                  VARCHAR(66)   NOT NULL,   -- "<hook_address>-<block>"
+    hook_address        VARCHAR(42)   NOT NULL,
+    block_number        BIGINT        NOT NULL,
+
+    -- SET CARDINALITY, this block only. Does not sum -- see the block comment
+    -- above.
+    pool_count          BIGINT        NOT NULL DEFAULT 0,
+    swap_count          BIGINT        NOT NULL DEFAULT 0,
+    volume_token0_abs   NUMERIC(78,0) NOT NULL DEFAULT 0,
+    volume_token1_abs   NUMERIC(78,0) NOT NULL DEFAULT 0,
+    -- How many DISTINCT effective Swap.fee values this hook charged in the
+    -- block. CONFOUND, documented rather than hidden: a hook serving three
+    -- pools on static tiers 500/3000/10000 reports 3 without ever overriding
+    -- anything. Compare against pool_count -- a static multi-pool hook's count
+    -- is capped by its pool count, a repricing hook's is not -- or, for a real
+    -- answer, count swaps where fee <> fee_tier (swap_fee_override_idx exists
+    -- for exactly that).
+    distinct_fee_values BIGINT        NOT NULL DEFAULT 0,
+
+    hook_flags                                 INTEGER NOT NULL DEFAULT 0,
+    hook_before_initialize                     BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_after_initialize                      BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_before_add_liquidity                  BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_after_add_liquidity                   BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_before_remove_liquidity               BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_after_remove_liquidity                BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_before_swap                           BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_after_swap                            BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_before_donate                         BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_after_donate                          BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_before_swap_returns_delta             BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_after_swap_returns_delta              BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_after_add_liquidity_returns_delta     BOOLEAN NOT NULL DEFAULT FALSE,
+    hook_after_remove_liquidity_returns_delta  BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT hook_stats_pk PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS hook_stats_hook_block_idx ON hook_stats (hook_address, block_number DESC);
+CREATE INDEX IF NOT EXISTS hook_stats_block_brin_idx ON hook_stats USING BRIN (block_number) WITH (pages_per_range = 128);
+
+-- ===========================================================================
+-- PREVIOUSLY-UNHOMED PoolManager EVENTS
+-- ===========================================================================
+--
+-- STATUS: the tables, the proto messages and the db_out writers below are all
+-- wired, but NOTHING POPULATES THEM YET -- src/pool_manager.rs still lets
+-- Donate / ERC-6909 / ProtocolFee logs fall through undecoded (see the UNHOMED
+-- EVENTS block at the foot of that file). Expect these three tables to be
+-- empty until a decoder lands. They are created anyway so that adding the
+-- decoder is a mapping change and not a schema migration on a live sink.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- donate -- a direct fee donation to in-range LPs. Its own table, not a `swap`
+-- row: pb::Swap has no kind discriminator, so any consumer summing
+-- Events.swaps would book a donation as swap volume.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS donate
+(
+    id              VARCHAR(80)   NOT NULL,
+    pool_id         VARCHAR(66)   NOT NULL,
+    sender          VARCHAR(42)   NOT NULL,
+    amount0         NUMERIC(78,0) NOT NULL DEFAULT 0,
+    amount1         NUMERIC(78,0) NOT NULL DEFAULT 0,
+
+    block_number    BIGINT        NOT NULL,
+    block_timestamp BIGINT        NOT NULL,
+    tx_hash         VARCHAR(66)   NOT NULL,
+    log_index       INTEGER       NOT NULL,
+    origin          VARCHAR(42)   NOT NULL,
+    gas_used        BIGINT,
+    gas_price       NUMERIC(78,0),
+
+    CONSTRAINT donate_pk PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS donate_pool_block_idx ON donate (pool_id, block_number DESC, log_index DESC);
+CREATE INDEX IF NOT EXISTS donate_sender_idx     ON donate (sender, block_number DESC);
+CREATE INDEX IF NOT EXISTS donate_block_brin_idx ON donate USING BRIN (block_number) WITH (pages_per_range = 128);
+
+-- ---------------------------------------------------------------------------
+-- claim_token_event -- ERC-6909 activity on the singleton: Transfer, Approval,
+-- OperatorSet. This is V4's flash-accounting rail: how routers and searchers
+-- park value INSIDE the PoolManager between swaps instead of settling to
+-- ERC-20. Nothing in the V4 subgraph surfaces it.
+--
+-- One table with a `kind` discriminator, not three: the three events share a
+-- subject (a currency balance held by the singleton) and every consumer wants
+-- them on one timeline. Columns not carried by a given kind stay at their
+-- defaults.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS claim_token_event
+(
+    id              VARCHAR(80)   NOT NULL,
+    kind            VARCHAR(16)   NOT NULL,   -- transfer | approval | operator_set
+    caller          VARCHAR(42)   NOT NULL DEFAULT '',   -- transfer: msg.sender
+    owner_address   VARCHAR(42)   NOT NULL DEFAULT '',   -- approval / operator_set
+    -- from/to are SQL reserved words, matching position_event's convention.
+    from_address    VARCHAR(42)   NOT NULL DEFAULT '',
+    to_address      VARCHAR(42)   NOT NULL DEFAULT '',
+    spender         VARCHAR(42)   NOT NULL DEFAULT '',   -- approval
+    operator        VARCHAR(42)   NOT NULL DEFAULT '',   -- operator_set
+    -- uint256 currency id = the currency address widened to uint256. Kept as
+    -- the raw number, NOT re-narrowed to an address: that mapping holds only by
+    -- convention and a lossy rewrite would be unrecoverable.
+    currency_id     NUMERIC(78,0) NOT NULL DEFAULT 0,
+    amount          NUMERIC(78,0) NOT NULL DEFAULT 0,
+    approved        BOOLEAN       NOT NULL DEFAULT FALSE, -- operator_set
+
+    block_number    BIGINT        NOT NULL,
+    block_timestamp BIGINT        NOT NULL,
+    tx_hash         VARCHAR(66)   NOT NULL,
+    log_index       INTEGER       NOT NULL,
+    origin          VARCHAR(42)   NOT NULL,
+    gas_used        BIGINT,
+    gas_price       NUMERIC(78,0),
+
+    CONSTRAINT claim_token_event_pk PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS cte_currency_block_idx ON claim_token_event (currency_id, block_number DESC);
+CREATE INDEX IF NOT EXISTS cte_from_idx           ON claim_token_event (from_address, block_number DESC);
+CREATE INDEX IF NOT EXISTS cte_to_idx             ON claim_token_event (to_address, block_number DESC);
+CREATE INDEX IF NOT EXISTS cte_kind_block_idx     ON claim_token_event (kind, block_number DESC);
+CREATE INDEX IF NOT EXISTS cte_block_brin_idx     ON claim_token_event USING BRIN (block_number) WITH (pages_per_range = 128);
+
+-- ---------------------------------------------------------------------------
+-- protocol_fee_event -- ProtocolFeeUpdated / ProtocolFeeControllerUpdated. The
+-- only on-chain record of protocol revenue being switched on for a pool.
+--
+-- Not folded into an UPDATE on `pool`: a sink upserting on pool.id could not
+-- distinguish it from a pool creation and would zero out token0/token1/hook.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS protocol_fee_event
+(
+    id              VARCHAR(80)   NOT NULL,
+    kind            VARCHAR(24)   NOT NULL,   -- fee_updated | controller_updated
+    pool_id         VARCHAR(66)   NOT NULL DEFAULT '',  -- fee_updated only
+    -- uint24, LEFT PACKED: low 12 bits = fee on 0->1, high 12 bits = fee on
+    -- 1->0. The split is a v4-core encoding detail that may change; the raw
+    -- value is always recoverable, a pre-split pair is not.
+    protocol_fee    INTEGER       NOT NULL DEFAULT 0,
+    controller      VARCHAR(42)   NOT NULL DEFAULT '',  -- controller_updated only
+
+    block_number    BIGINT        NOT NULL,
+    block_timestamp BIGINT        NOT NULL,
+    tx_hash         VARCHAR(66)   NOT NULL,
+    log_index       INTEGER       NOT NULL,
+    origin          VARCHAR(42)   NOT NULL,
+    gas_used        BIGINT,
+    gas_price       NUMERIC(78,0),
+
+    CONSTRAINT protocol_fee_event_pk PRIMARY KEY (id)
+);
+
+CREATE INDEX IF NOT EXISTS pfe_pool_block_idx  ON protocol_fee_event (pool_id, block_number DESC) WHERE pool_id <> '';
+CREATE INDEX IF NOT EXISTS pfe_kind_block_idx  ON protocol_fee_event (kind, block_number DESC);
