@@ -3,6 +3,7 @@ package:
   name: uniswap_v4_base
   version: v0.1.0
   url: https://github.com/PaulieB14/uniswap-v4-substreams
+  image: ./icon.png
   description: >
     Uniswap V4 on Base, converted from the uniswap-v4-base-3 subgraph
     (Qmbsc6XQWbiv4DfLVfaNciScqYLyDWUYjWzrFBbzzmRsMB). Adds hook permission
