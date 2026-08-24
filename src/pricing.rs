@@ -1850,3 +1850,12 @@ mod anchor_verified_tests {
         assert!(tracked_amount_usd(None, None).is_none());
     }
 }
+
+/// Sign flip for the swapper-centric -> pool-centric conversion.
+///
+/// Its own function rather than an inline `* -1` so the one place the
+/// convention changes is greppable, and so the proto's stated contract
+/// (`amountN_adjusted = -amountN / 10^decimals`) maps to a named operation.
+pub fn negate(v: &BigDecimal) -> BigDecimal {
+    v.clone() * BigDecimal::from(-1)
+}

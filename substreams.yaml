@@ -1,7 +1,7 @@
 specVersion: v0.1.0
 package:
   name: uniswap_v4_base
-  version: v0.1.1
+  version: v0.1.2
   url: https://github.com/PaulieB14/uniswap-v4-substreams
   image: ./icon.png
   description: >
@@ -105,10 +105,10 @@ modules:
   # store, "symbol<US>name<US>decimals<US>flags"; the flags field marks whether
   # decimals was MEASURED or defaulted to 18 — never scale money by a defaulted
   # value. This is the only module in the package that issues eth_calls, and it
-  # is deliberately OFF the map_enriched/db_out path: it is not required to
-  # answer "what did this swap trade" (the PoolKey already names the token
-  # addresses) and an RPC dependency should not be able to stall the main
-  # pipeline. Nothing consumes it yet — see README "Known gaps".
+  # store_tokens IS on the critical path: db_out <- map_totals <- map_enriched
+    # <- store_tokens. An earlier comment here claimed the opposite ("nothing
+    # consumes it yet"), which stopped being true when enrichment started
+    # attaching symbols. Every module therefore blocks on synchronous eth_call.
   - name: store_tokens
     kind: store
     updatePolicy: set

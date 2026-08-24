@@ -554,21 +554,35 @@ fn attach_usd(events: &mut pb::Events, prices: &StoreGetString) {
                 .and_then(|v| crate::pricing::decode_price_value(&v))
                 .map(|r| r.price)
         };
+        // POOL-CENTRIC, per the proto contract: the raw int128s are
+        // swapper-centric, so the human-readable pair carries the opposite sign
+        // and matches the subgraph's convertTokenToDecimal(amount.neg(), dec).
+        // A positive amount0_adjusted means the POOL received token0.
+        let a0 = crate::pricing::negate(&h0);
+        let a1 = crate::pricing::negate(&h1);
+
+        // Per-leg USD inherits that sign — usd_for_leg only multiplies by
+        // non-negative prices, so direction survives. Passing magnitudes here
+        // would make the USD columns contradict the *_adjusted columns they sit
+        // next to, and direction is not recoverable from an absolute value.
         let u0 = crate::pricing::usd_for_leg(
-            &s.token0, &crate::pricing::abs_bd(&h0), native_usd.as_ref(), dn(&s.token0).as_ref());
+            &s.token0, &a0, native_usd.as_ref(), dn(&s.token0).as_ref());
         let u1 = crate::pricing::usd_for_leg(
-            &s.token1, &crate::pricing::abs_bd(&h1), native_usd.as_ref(), dn(&s.token1).as_ref());
+            &s.token1, &a1, native_usd.as_ref(), dn(&s.token1).as_ref());
 
         if let Some(a) = &u0 { s.amount0_usd = a.to_string(); }
         if let Some(b) = &u1 { s.amount1_usd = b.to_string(); }
-        if let Some(t) = crate::pricing::tracked_amount_usd(u0.as_ref(), u1.as_ref()) {
+        // The tracked notional stays NON-NEGATIVE — it is a trade size, not a
+        // direction, and averaging a +x with a -x would cancel to zero.
+        let t0 = u0.as_ref().map(crate::pricing::abs_bd);
+        let t1 = u1.as_ref().map(crate::pricing::abs_bd);
+        if let Some(t) = crate::pricing::tracked_amount_usd(t0.as_ref(), t1.as_ref()) {
             s.amount_usd = t.to_string();
             s.priced = true;
         }
         if let Some(n) = &native_usd { s.native_price_usd = n.to_string(); }
-        // Human-readable amounts, signed, only when both decimals were measured.
-        s.amount0_adjusted = h0.to_string();
-        s.amount1_adjusted = h1.to_string();
+        s.amount0_adjusted = a0.to_string();
+        s.amount1_adjusted = a1.to_string();
         s.amounts_adjusted = true;
     }
 }
@@ -956,5 +970,56 @@ mod tests {
         // and a store write is permanent, so fabricating anything else here
         // would be unrecoverable.
         assert_eq!(abs_amount("").to_string(), "0");
+    }
+}
+
+#[cfg(test)]
+mod usd_sign_tests {
+    use super::*;
+    use substreams::scalar::BigDecimal;
+
+    /// Pins the sign contract the proto states, which shipped violated in
+    /// v0.1.1 precisely because `attach_usd` had no test at all.
+    ///
+    /// Vector is a real Base swap: token0 USDC (6 dec) amount0 = +45851747,
+    /// token1 18 dec amount1 = -17691180180904202495948431. The deployed
+    /// subgraph publishes amount0 = "-45.851747" for this trade, so the
+    /// pool-centric adjusted value must be NEGATIVE where the raw int is
+    /// positive.
+    #[test]
+    fn adjusted_is_pool_centric_and_opposes_the_raw_int() {
+        let raw0 = crate::pricing::to_human("45851747", 6).unwrap();
+        let a0 = crate::pricing::negate(&raw0);
+        assert_eq!(a0.to_string(), "-45.851747", "adjusted must flip the raw sign");
+
+        let raw1 = crate::pricing::to_human("-17691180180904202495948431", 18).unwrap();
+        let a1 = crate::pricing::negate(&raw1);
+        assert!(
+            a1.to_string().starts_with("17691180.1809042024"),
+            "got {a1}"
+        );
+    }
+
+    /// A per-leg USD value must agree in sign with the adjusted leg beside it.
+    /// v0.1.1 disagreed on 5 of 17 emitted legs because the amount was passed
+    /// through abs() before pricing.
+    #[test]
+    fn usd_leg_keeps_the_sign_of_its_adjusted_leg() {
+        let native = BigDecimal::from(2436);
+        let adjusted: BigDecimal = "-3.724185".parse().unwrap();
+        let usd = crate::pricing::usd_for_leg(
+            crate::pricing::WRAPPED_NATIVE, &adjusted, Some(&native), None)
+            .expect("native leg must price");
+        assert!(usd < BigDecimal::from(0), "usd leg lost its sign: {usd}");
+    }
+
+    /// The tracked notional is a trade SIZE and must stay non-negative even
+    /// though its inputs are signed — otherwise a +x/-x pair averages to zero.
+    #[test]
+    fn tracked_notional_is_non_negative() {
+        let a: BigDecimal = "100".parse().unwrap();
+        let b: BigDecimal = "100".parse().unwrap();
+        let t = crate::pricing::tracked_amount_usd(Some(&a), Some(&b)).unwrap();
+        assert_eq!(t.to_string(), "100");
     }
 }

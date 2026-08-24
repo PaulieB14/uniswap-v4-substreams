@@ -745,6 +745,6 @@ CREATE TABLE IF NOT EXISTS token (
     symbol              TEXT,
     decimals            INTEGER,
     decimals_measured   BOOLEAN,
-    first_seen_block    BIGINT
+    last_seen_block     BIGINT
 );
 CREATE INDEX IF NOT EXISTS token_symbol_idx ON token (symbol);

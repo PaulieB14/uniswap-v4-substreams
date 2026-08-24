@@ -130,11 +130,19 @@ pub fn db_out(events: pb::Events) -> Result<DatabaseChanges, Error> {
         }
     }
     for (i, (addr, (sym, dec, measured, blk))) in seen.iter().enumerate() {
-        let tc = changes.push_change("token", addr, stats_ordinal(i), Operation::Create);
+        // Upsert, not Create: this is the only table whose primary key recurs
+        // across blocks (WETH appears in most of them), and the sink refuses a
+        // duplicate PK — both in-batch and at the database constraint. Must be
+        // Upsert on EVERY write, never mixed with Create for this table.
+        let tc = changes.push_change("token", addr, stats_ordinal(i), Operation::Upsert);
         tc.change("symbol", ("", *sym));
         tc.change("decimals", (0u32, *dec));
         tc.change("decimals_measured", (false, *measured));
-        tc.change("first_seen_block", (0u64, *blk));
+        // last_seen, not first_seen: an upsert overwrites, and TableChange has
+        // no min()/set_if_null() (those live on the Row builder this module does
+        // not use). Naming it for what it actually holds beats a column that
+        // silently means the opposite of its name.
+        tc.change("last_seen_block", (0u64, *blk));
     }
 
     Ok(changes)
@@ -247,13 +255,13 @@ fn push_swap(changes: &mut DatabaseChanges, swap: &pb::Swap, idx: usize) {
         // USD and human-readable amounts. Populated only when the price store
         // could anchor the swap; `priced` separates "not anchored" from
         // "genuinely zero", which a bare 0 in amount_usd cannot.
-        tc.change("amount0_adjusted", ("", swap.amount0_adjusted.as_str()));
-        tc.change("amount1_adjusted", ("", swap.amount1_adjusted.as_str()));
+        tc.change("amount0_adjusted", ("0", numeric(&swap.amount0_adjusted)));
+        tc.change("amount1_adjusted", ("0", numeric(&swap.amount1_adjusted)));
         tc.change("amounts_adjusted", (false, swap.amounts_adjusted));
-        tc.change("amount0_usd", ("", swap.amount0_usd.as_str()));
-        tc.change("amount1_usd", ("", swap.amount1_usd.as_str()));
-        tc.change("amount_usd", ("", swap.amount_usd.as_str()));
-        tc.change("native_price_usd", ("", swap.native_price_usd.as_str()));
+        tc.change("amount0_usd", ("0", numeric(&swap.amount0_usd)));
+        tc.change("amount1_usd", ("0", numeric(&swap.amount1_usd)));
+        tc.change("amount_usd", ("0", numeric(&swap.amount_usd)));
+        tc.change("native_price_usd", ("0", numeric(&swap.native_price_usd)));
         tc.change("priced", (false, swap.priced));
         set_hook_identity(tc, swap.hook.as_ref());
         set_meta(tc, swap.meta.as_ref());
