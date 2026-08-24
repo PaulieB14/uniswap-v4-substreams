@@ -107,6 +107,41 @@ substreams-sink-sql run   "$DSN" ./uniswap-v4-base-v0.1.0.spkg
 Note: v4 delta operations require a recent `substreams-sink-sql`; an older binary silently ignores
 them.
 
+
+### Sinking: check `cursors`, not the exit code
+
+`substreams-sink-sql` 4.13.1 flushes on a block interval (default 1000) and **drops the final
+partial batch on a bounded run**, then exits 0 with `substreams ended correctly`. Measured on a
+10,000-block run: it reported reaching `#34999999` while `last_block_written` was `#34999001` —
+**998 blocks, 6,372 swaps and 50,315 modify_liquidity rows silently missing**, exit code 0.
+
+Re-running the identical command does not heal it: the stored cursor wins over the requested
+start, the sink streams the missing blocks, flushes nothing, and terminates gracefully with
+byte-identical row counts.
+
+Either run unbounded, pad the stop block to `initialBlock + k x flush_interval`, or force a flush
+every block:
+
+```bash
+substreams-sink-sql run "$DSN" ./pkg.spkg <start>:<stop> \
+  -e base-mainnet.streamingfast.io:443 \
+  --batch-block-flush-interval 1 --batch-row-flush-interval 0
+```
+
+And verify completion from the database, which is the only honest signal:
+
+```sql
+SELECT block_num FROM cursors;   -- must equal your stop block
+```
+
+### Totals are window-scoped, not lifetime
+
+`pool_totals` / `hook_totals` accumulate in an `add`-policy store that starts at zero at the
+module's `initialBlock`. They are true lifetime figures **only** when run from the shipped
+`initialBlock: 25350988`. Lower it to test at a recent block and they silently become "since the
+window started", with nothing on the row to say so. Enriched swap rows at least carry the
+`token0 = ''` sentinel; totals have no equivalent.
+
 ## Known gaps
 
 - **USD pricing is wired but unproven at scale.** `store_prices` maintains the native price off

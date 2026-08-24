@@ -163,6 +163,15 @@ message Swap {
   // $0.00" from "this trade could not be priced" — a zero is otherwise
   // indistinguishable and launders straight into every downstream total.
   bool   priced = 28;
+  // Per-leg anchoring flags. `priced` is row-level and says the SWAP got a
+  // tracked notional; these say whether each LEG was individually valued.
+  // Without them a 0 in amount0_usd is ambiguous: it means either "this leg
+  // could not be anchored" or "this leg really was worth nothing", and both
+  // occur — testing found a genuine $0 swap (USDC/BaseJak, all amount words
+  // zero on chain) sitting alongside 1,101 rows whose leg was simply
+  // unanchored. Filter on these, not on amount0_usd <> 0.
+  bool   amount0_priced = 29;
+  bool   amount1_priced = 30;
 }
 
 message ModifyLiquidity {

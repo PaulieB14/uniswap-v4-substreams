@@ -251,7 +251,12 @@ CREATE TABLE IF NOT EXISTS swap
     token1_symbol           TEXT,
     token0_decimals         INTEGER,
     token1_decimals         INTEGER,
-    decimals_measured       BOOLEAN
+    decimals_measured       BOOLEAN,
+    -- Per-leg anchoring. amount_usd/priced are row-level; these say whether
+    -- each leg was individually valued. A 0 in amount0_usd without this flag
+    -- is ambiguous between "unanchored" and "genuinely $0" — both occur.
+    amount0_priced          BOOLEAN,
+    amount1_priced          BOOLEAN
 );
 
 -- "Recent swaps in this pool" — the single most common V4 query. DESC so the
@@ -705,6 +710,11 @@ CREATE INDEX IF NOT EXISTS pfe_kind_block_idx  ON protocol_fee_event (kind, bloc
 --
 -- One row per (entity, block) so history is queryable; take the row with the
 -- greatest block_number for "current".
+--
+-- WINDOW-SCOPED, NOT LIFETIME, unless the module ran from its shipped
+-- initialBlock. The add-store starts at zero at initialBlock, so a package
+-- rebuilt with a later start silently reports "since the window began" under a
+-- column named like a lifetime total. Nothing on the row distinguishes the two.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS pool_totals (
     id                      TEXT PRIMARY KEY,

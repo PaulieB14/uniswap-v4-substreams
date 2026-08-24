@@ -263,6 +263,8 @@ fn push_swap(changes: &mut DatabaseChanges, swap: &pb::Swap, idx: usize) {
         tc.change("amount_usd", ("0", numeric(&swap.amount_usd)));
         tc.change("native_price_usd", ("0", numeric(&swap.native_price_usd)));
         tc.change("priced", (false, swap.priced));
+        tc.change("amount0_priced", (false, swap.amount0_priced));
+        tc.change("amount1_priced", (false, swap.amount1_priced));
         set_hook_identity(tc, swap.hook.as_ref());
         set_meta(tc, swap.meta.as_ref());
     }

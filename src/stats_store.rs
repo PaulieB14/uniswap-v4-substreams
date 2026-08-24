@@ -570,8 +570,8 @@ fn attach_usd(events: &mut pb::Events, prices: &StoreGetString) {
         let u1 = crate::pricing::usd_for_leg(
             &s.token1, &a1, native_usd.as_ref(), dn(&s.token1).as_ref());
 
-        if let Some(a) = &u0 { s.amount0_usd = a.to_string(); }
-        if let Some(b) = &u1 { s.amount1_usd = b.to_string(); }
+        if let Some(a) = &u0 { s.amount0_usd = a.to_string(); s.amount0_priced = true; }
+        if let Some(b) = &u1 { s.amount1_usd = b.to_string(); s.amount1_priced = true; }
         // The tracked notional stays NON-NEGATIVE — it is a trade size, not a
         // direction, and averaging a +x with a -x would cancel to zero.
         let t0 = u0.as_ref().map(crate::pricing::abs_bd);
