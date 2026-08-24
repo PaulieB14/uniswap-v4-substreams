@@ -79,6 +79,16 @@ the deployed subgraph on the asymmetric-decimals case (VVV/cbBTC, 18 vs 8): comp
 
 ## Run
 
+Published: https://substreams.dev/packages/uniswap-v4-base
+
+```bash
+# Use the full URL. The short reference the registry advertises
+# (uniswap-v4-base@v0.1.1) does not resolve in CLI 1.18.4 — that affects every
+# package in the registry, not just this one.
+substreams gui https://spkg.io/v1/packages/uniswap-v4-base/v0.1.1
+```
+
+
 ```bash
 cargo build --target wasm32-unknown-unknown --release
 substreams pack substreams.yaml
