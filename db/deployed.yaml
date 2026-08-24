@@ -1,0 +1,103 @@
+dataSources:
+  - kind: ethereum/contract
+    mapping:
+      abis:
+        - file:
+            /: /ipfs/QmPfKNZPkVATzL3EHypkcsyKhehR4jkiYEVqSzh2hxWYj1
+          name: ERC20
+        - file:
+            /: /ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT
+          name: ERC20SymbolBytes
+        - file:
+            /: /ipfs/QmQCP6Pdp1MqpwRv2qoPHuUTwZGy7Q3eDHg4w5kzwE9mBj
+          name: ERC20NameBytes
+        - file:
+            /: /ipfs/QmWZenL7LN5D4t5vVa3dhCvTbsHxEvQUHczxCXdq3PasVV
+          name: PoolManager
+      apiVersion: 0.0.7
+      entities:
+        - Pool
+        - Token
+      eventHandlers:
+        - event: >-
+            Initialize(indexed bytes32,indexed address,indexed
+            address,uint24,int24,address,uint160,int24)
+          handler: handleInitialize
+        - event: >-
+            ModifyLiquidity(indexed bytes32,indexed
+            address,int24,int24,int256,bytes32)
+          handler: handleModifyLiquidity
+        - event: >-
+            Swap(indexed bytes32,indexed
+            address,int128,int128,uint160,uint128,int24,uint24)
+          handler: handleSwap
+      file:
+        /: /ipfs/QmaZ7jmx2no1pp4W5G1PqbxyeaNXBPwpvgTnN42xfZGvva
+      kind: ethereum/events
+      language: wasm/assemblyscript
+    name: PoolManager
+    network: base
+    source:
+      abi: PoolManager
+      address: '0x498581fF718922c3f8e6A244956aF099B2652b2b'
+      startBlock: 25350988
+  - kind: ethereum/contract
+    mapping:
+      abis:
+        - file:
+            /: /ipfs/Qmab9Ef8omf249PgFd77cAN2FbNxPJobYfXwihLFFZswJS
+          name: PositionManager
+      apiVersion: 0.0.7
+      entities:
+        - Position
+      eventHandlers:
+        - event: Subscription(indexed uint256,indexed address)
+          handler: handleSubscription
+        - event: Unsubscription(indexed uint256,indexed address)
+          handler: handleUnsubscription
+        - event: Transfer(indexed address,indexed address,indexed uint256)
+          handler: handleTransfer
+      file:
+        /: /ipfs/QmeoqsF1YGVTpVitSqiC7zQ1L8GqceQ5QviSm8Dp1gG2Ba
+      kind: ethereum/events
+      language: wasm/assemblyscript
+    name: PositionManager
+    network: base
+    source:
+      abi: PositionManager
+      address: '0x7C5f5A4bBd8fD63184577525326123B519429bDc'
+      startBlock: 25350993
+  - kind: ethereum/contract
+    mapping:
+      abis:
+        - file:
+            /: /ipfs/QmRYVaUVwJjW7FKDgLNJzHs3iNvnyBoBGmdzy47ofAoufd
+          name: ArrakisHookFactory
+      apiVersion: 0.0.7
+      entities:
+        - ArrakisHook
+      eventHandlers:
+        - event: LogCreatePrivateHook(indexed address,indexed address,bytes32)
+          handler: handleArrakisHookDeployed
+      file:
+        /: /ipfs/Qmaa6uXvHHjA2gAtPYSZSN12iAKd6Ru7tqm4Ju7KoiU1yW
+      kind: ethereum/events
+      language: wasm/assemblyscript
+    name: ArrakisHookFactory
+    network: base
+    source:
+      abi: ArrakisHookFactory
+      address: '0xeF129a430032C8183abA158C1a70799e3b840dF9'
+      startBlock: 28450225
+description: Uniswap is a decentralized protocol for automated token exchange on Ethereum.
+features:
+  - nonFatalErrors
+  - grafting
+graft:
+  base: QmS1ehFzXTD9eA1f1EgjZvdyAj2EHtVNMrEN91H3pLuHMy
+  block: 26990278
+repository: https://github.com/Uniswap/v4-subgraph
+schema:
+  file:
+    /: /ipfs/QmcGeTxBaueyQtNuV2p9DGjsnu9wNDQqMgTR2XyT3Fiz6U
+specVersion: 0.0.4

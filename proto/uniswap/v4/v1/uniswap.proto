@@ -1,0 +1,109 @@
+syntax = "proto3";
+package uniswap.v4.v1;
+
+// Block/tx/log provenance carried on every event row. The subgraph splits this
+// across a Transaction entity + @derivedFrom back-references; flattening it
+// makes every row independently queryable without a join.
+message Meta {
+  uint64 block_number   = 1;
+  uint64 block_timestamp= 2;
+  string tx_hash        = 3;
+  uint32 log_index      = 4;
+  string origin         = 5;  // tx.from — the EOA, as the subgraph's `origin`
+  uint64 gas_used       = 6;
+  string gas_price      = 7;
+}
+
+// A hook's declared capabilities, decoded from the LOW 14 BITS OF ITS ADDRESS.
+// Uniswap V4 mines hook addresses so the permission set is encoded in the
+// address itself — so this is free, needs no RPC, and is known at pool creation
+// even for a hook nobody has ever seen before. The source subgraph stores
+// `hooks` as an opaque address string and cannot answer "which pools can
+// override swap fees".
+message HookPermissions {
+  string address                              = 1;
+  bool   before_initialize                    = 2;   // bit 13
+  bool   after_initialize                     = 3;   // bit 12
+  bool   before_add_liquidity                 = 4;   // bit 11
+  bool   after_add_liquidity                  = 5;   // bit 10
+  bool   before_remove_liquidity              = 6;   // bit 9
+  bool   after_remove_liquidity               = 7;   // bit 8
+  bool   before_swap                          = 8;   // bit 7
+  bool   after_swap                           = 9;   // bit 6
+  bool   before_donate                        = 10;  // bit 5
+  bool   after_donate                         = 11;  // bit 4
+  bool   before_swap_returns_delta            = 12;  // bit 3
+  bool   after_swap_returns_delta             = 13;  // bit 2
+  bool   after_add_liquidity_returns_delta    = 14;  // bit 1
+  bool   after_remove_liquidity_returns_delta = 15;  // bit 0
+  uint32 flags                                = 16;  // raw low-14-bit mask
+  bool   has_hook                             = 17;  // address != 0
+}
+
+message Pool {
+  string id            = 1;   // PoolId (bytes32) — V4 pools are ids, not addresses
+  string token0        = 2;
+  string token1        = 3;
+  uint64 fee_tier      = 4;
+  int32  tick_spacing  = 5;
+  HookPermissions hook = 6;
+  string sqrt_price    = 7;
+  int32  tick          = 8;
+  string liquidity     = 9;
+  // Dynamic-fee pools set fee to 0x800000. Precomputing this beats making every
+  // consumer know the sentinel.
+  bool   is_dynamic_fee = 10;
+  Meta   meta           = 11;
+}
+
+message Swap {
+  string id           = 1;
+  string pool_id      = 2;
+  string sender       = 3;
+  string amount0      = 4;   // signed, token units
+  string amount1      = 5;
+  string sqrt_price_x96= 6;
+  string liquidity    = 7;
+  int32  tick         = 8;
+  uint32 fee          = 9;   // the fee ACTUALLY charged — a hook may override it
+  Meta   meta         = 10;
+}
+
+message ModifyLiquidity {
+  string id          = 1;
+  string pool_id     = 2;
+  string sender      = 3;
+  int32  tick_lower  = 4;
+  int32  tick_upper  = 5;
+  string liquidity_delta = 6;   // signed: add vs remove
+  string salt        = 7;
+  Meta   meta        = 8;
+}
+
+message PositionEvent {
+  string id        = 1;
+  string token_id  = 2;
+  string kind      = 3;   // subscribe | unsubscribe | transfer
+  string address   = 4;   // subscriber, or "to" for a transfer
+  string from      = 5;
+  string to        = 6;
+  Meta   meta      = 7;
+}
+
+message HookDeployment {
+  string id       = 1;
+  string hook     = 2;
+  string module   = 3;
+  string salt     = 4;
+  string factory  = 5;   // which factory minted it — Arrakis today, extensible
+  HookPermissions permissions = 6;
+  Meta   meta     = 7;
+}
+
+message Events {
+  repeated Pool            pools             = 1;
+  repeated Swap            swaps             = 2;
+  repeated ModifyLiquidity modify_liquidity  = 3;
+  repeated PositionEvent   position_events   = 4;
+  repeated HookDeployment  hook_deployments  = 5;
+}

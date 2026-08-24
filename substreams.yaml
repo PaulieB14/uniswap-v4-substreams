@@ -1,0 +1,66 @@
+specVersion: v0.1.0
+package:
+  name: uniswap_v4_base
+  version: v0.1.0
+  url: https://github.com/PaulieB14/uniswap-v4-substreams
+  description: >
+    Uniswap V4 on Base, converted from the uniswap-v4-base-3 subgraph
+    (Qmbsc6XQWbiv4DfLVfaNciScqYLyDWUYjWzrFBbzzmRsMB). Adds hook permission
+    decoding from the low 14 bits of the hook address, the per-swap effective
+    fee (which the subgraph overwrites), the ModifyLiquidity salt, and full
+    position ownership history — none of which the source subgraph exposes.
+    Donate, ERC-6909 claim tokens and protocol-fee governance are decodable
+    from the same logs but have no message in the frozen proto contract, so
+    they are NOT emitted yet; see the block comment at the foot of
+    src/pool_manager.rs for the shapes they need.
+
+network: base
+
+imports:
+  database: https://github.com/streamingfast/substreams-sink-database-changes/releases/download/v4.0.0/substreams-sink-database-changes-v4.0.0.spkg
+  sql: https://github.com/streamingfast/substreams-sink-sql/releases/download/protodefs-v1.0.7/substreams-sink-sql-protodefs-v1.0.7.spkg
+  # Block-level skip via the foundational filter. NOT enabled yet: it takes a
+  # single evt_addr param and this package watches three contracts, so turning
+  # it on without a verified multi-address SQE expression would silently drop
+  # events. The skill's own warning. Revisit once the expression is tested.
+  # eth_common: https://spkg.io/v1/packages/ethereum-common/v0.3.3
+
+protobuf:
+  files:
+    - uniswap/v4/v1/uniswap.proto
+  importPaths:
+    - ./proto
+  excludePaths: [sf/substreams, google]
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: ./target/wasm32-unknown-unknown/release/uniswap_v4_substreams.wasm
+
+modules:
+  # initialBlock is the PoolManager's deployment block, carried over from the
+  # subgraph's startBlock. The live subgraph GRAFTS at 26990278, meaning it
+  # never indexed its own early history; this backfills the real range in
+  # parallel instead.
+  - name: map_events
+    kind: map
+    initialBlock: 25350988
+    inputs:
+      - source: sf.ethereum.type.v2.Block
+    output:
+      type: proto:uniswap.v4.v1.Events
+
+  - name: db_out
+    kind: map
+    initialBlock: 25350988
+    inputs:
+      - map: map_events
+    output:
+      type: proto:sf.substreams.sink.database.v1.DatabaseChanges
+
+sink:
+  module: db_out
+  type: sf.substreams.sink.sql.v1.Service
+  config:
+    schema: ./db/schema.sql
+    engine: postgres

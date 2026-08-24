@@ -1,0 +1,29 @@
+[package]
+name = "uniswap-v4-substreams"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+substreams = "0.7"
+substreams-ethereum = "0.11.1"
+ethabi = "18"
+substreams-database-change = "3.0.0"
+substreams-entity-change = "2"
+prost = "0.13"
+prost-types = "0.13"
+hex-literal = "0.4"
+num-bigint = "0.4"
+num-traits = "0.2"
+
+[build-dependencies]
+anyhow = "1"
+substreams-ethereum = "0.11.1"
+prost-build = "0.13"
+
+[profile.release]
+lto = true
+opt-level = 's'
+strip = "debuginfo"
