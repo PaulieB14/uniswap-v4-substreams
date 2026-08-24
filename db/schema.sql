@@ -141,7 +141,12 @@ CREATE TABLE IF NOT EXISTS pool
     last_swap_block           BIGINT,
     last_swap_timestamp       BIGINT,
 
-    CONSTRAINT pool_pk PRIMARY KEY (id)
+    CONSTRAINT pool_pk PRIMARY KEY (id),
+    token0_symbol           TEXT,
+    token1_symbol           TEXT,
+    token0_decimals         INTEGER,
+    token1_decimals         INTEGER,
+    decimals_measured       BOOLEAN
 );
 
 -- The requested partial index: only pools that actually have a hook. On Base
@@ -238,7 +243,15 @@ CREATE TABLE IF NOT EXISTS swap
     amount1_usd             NUMERIC,
     amount_usd              NUMERIC,
     native_price_usd        NUMERIC,
-    priced                  BOOLEAN
+    priced                  BOOLEAN,
+    -- Denormalised token metadata. Without these a consumer sees 0x833589fc…
+    -- instead of USDC on every row, and joining is not possible because there
+    -- was no token table to join to.
+    token0_symbol           TEXT,
+    token1_symbol           TEXT,
+    token0_decimals         INTEGER,
+    token1_decimals         INTEGER,
+    decimals_measured       BOOLEAN
 );
 
 -- "Recent swaps in this pool" — the single most common V4 query. DESC so the
@@ -718,3 +731,20 @@ CREATE TABLE IF NOT EXISTS hook_totals (
     volume_token1_abs       NUMERIC
 );
 CREATE INDEX IF NOT EXISTS hook_totals_hook_block_idx ON hook_totals (hook_address, block_number DESC);
+
+
+-- ---------------------------------------------------------------------------
+-- Token metadata, resolved once per token by eth_call and cached in
+-- store_tokens. `decimals_measured` records whether decimals() actually
+-- answered: an unmeasured token defaults to 18, and an amount scaled by a
+-- guessed exponent is wrong by orders of magnitude rather than slightly.
+-- Filter on it before trusting any *_adjusted column.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS token (
+    id                  TEXT PRIMARY KEY,   -- 0x-lowercase address
+    symbol              TEXT,
+    decimals            INTEGER,
+    decimals_measured   BOOLEAN,
+    first_seen_block    BIGINT
+);
+CREATE INDEX IF NOT EXISTS token_symbol_idx ON token (symbol);

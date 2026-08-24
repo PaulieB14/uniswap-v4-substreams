@@ -178,6 +178,18 @@ where
     //
     // A `HookPermissions` clone per row is the cost of denormalisation and is
     // the point of the module: the row has to stand alone.
+    // Pools carry their own token metadata too. A pool exists from Initialize
+    // and may never trade, so attaching only to swaps leaves a freshly created
+    // pair permanently unnamed — which is precisely the state a new pool is in
+    // when someone is most likely to be looking it up.
+    for p in out.pools.iter_mut() {
+        let (s0, s1, d0, d1, meas) = attach_tokens(&resolve_token, &p.token0, &p.token1);
+        p.token0_symbol = s0;
+        p.token1_symbol = s1;
+        p.token0_decimals = d0;
+        p.token1_decimals = d1;
+        p.decimals_measured = meas;
+    }
     for s in out.swaps.iter_mut() {
         if let Some(p) = pools.get(&s.pool_id).and_then(|a| a.pool.as_ref()) {
             s.token0 = p.token0.clone();

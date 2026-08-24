@@ -96,6 +96,47 @@ pub fn db_out(events: pb::Events) -> Result<DatabaseChanges, Error> {
         push_hook_totals(&mut changes, ht, i);
     }
 
+    // One row per distinct token the block resolved. Written from the enriched
+    // swaps rather than a dedicated message: store_tokens already resolved the
+    // metadata and attached it here, so a separate proto type would just be a
+    // second copy to keep in sync.
+    let mut seen: std::collections::BTreeMap<&str, (&str, u32, bool, u64)> =
+        std::collections::BTreeMap::new();
+    // Pools first: a pool exists from Initialize and may never trade, so
+    // collecting only from swaps would leave a freshly created pair's tokens
+    // absent from the token table indefinitely.
+    for p in &events.pools {
+        let blk = p.meta.as_ref().map(|m| m.block_number).unwrap_or(0);
+        for (addr, sym, dec) in [
+            (p.token0.as_str(), p.token0_symbol.as_str(), p.token0_decimals),
+            (p.token1.as_str(), p.token1_symbol.as_str(), p.token1_decimals),
+        ] {
+            if addr.is_empty() {
+                continue;
+            }
+            seen.entry(addr).or_insert((sym, dec, p.decimals_measured, blk));
+        }
+    }
+    for sw in &events.swaps {
+        let blk = sw.meta.as_ref().map(|m| m.block_number).unwrap_or(0);
+        for (addr, sym, dec) in [
+            (sw.token0.as_str(), sw.token0_symbol.as_str(), sw.token0_decimals),
+            (sw.token1.as_str(), sw.token1_symbol.as_str(), sw.token1_decimals),
+        ] {
+            if addr.is_empty() {
+                continue;
+            }
+            seen.entry(addr).or_insert((sym, dec, sw.decimals_measured, blk));
+        }
+    }
+    for (i, (addr, (sym, dec, measured, blk))) in seen.iter().enumerate() {
+        let tc = changes.push_change("token", addr, stats_ordinal(i), Operation::Create);
+        tc.change("symbol", ("", *sym));
+        tc.change("decimals", (0u32, *dec));
+        tc.change("decimals_measured", (false, *measured));
+        tc.change("first_seen_block", (0u64, *blk));
+    }
+
     Ok(changes)
 }
 
@@ -118,6 +159,11 @@ fn push_pool_create(changes: &mut DatabaseChanges, pool: &pb::Pool, idx: usize) 
     tc.change("token1", ("", pool.token1.as_str()));
     tc.change("fee_tier", (0u64, pool.fee_tier));
     tc.change("tick_spacing", (0i32, pool.tick_spacing));
+    tc.change("token0_symbol", ("", pool.token0_symbol.as_str()));
+    tc.change("token1_symbol", ("", pool.token1_symbol.as_str()));
+    tc.change("token0_decimals", (0u32, pool.token0_decimals));
+    tc.change("token1_decimals", (0u32, pool.token1_decimals));
+    tc.change("decimals_measured", (false, pool.decimals_measured));
     tc.change("is_dynamic_fee", (false, pool.is_dynamic_fee));
 
     // Seed state from Initialize. `liquidity` is 0 at creation by definition —
@@ -193,6 +239,11 @@ fn push_swap(changes: &mut DatabaseChanges, swap: &pb::Swap, idx: usize) {
         tc.change("token1", ("", swap.token1.as_str()));
         tc.change("fee_tier", (0u64, swap.fee_tier));
         tc.change("tick_spacing", (0i32, swap.tick_spacing));
+        tc.change("token0_symbol", ("", swap.token0_symbol.as_str()));
+        tc.change("token1_symbol", ("", swap.token1_symbol.as_str()));
+        tc.change("token0_decimals", (0u32, swap.token0_decimals));
+        tc.change("token1_decimals", (0u32, swap.token1_decimals));
+        tc.change("decimals_measured", (false, swap.decimals_measured));
         // USD and human-readable amounts. Populated only when the price store
         // could anchor the swap; `priced` separates "not anchored" from
         // "genuinely zero", which a bare 0 in amount_usd cannot.
