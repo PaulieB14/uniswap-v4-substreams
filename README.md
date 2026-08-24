@@ -1,3 +1,5 @@
+<img src="icon.png" width="72" align="right" alt="Uniswap"/>
+
 # uniswap-v4-substreams
 
 Uniswap V4 on Base as a Substreams package, converted from **`uniswap-v4-base-3`**
