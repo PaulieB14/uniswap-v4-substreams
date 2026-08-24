@@ -1737,3 +1737,116 @@ mod chain_verified_tests {
         assert_eq!(p0.to_string(), "0");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Attaching USD to rows
+// ---------------------------------------------------------------------------
+
+/// Human-units value of a raw integer amount. Sign preserved.
+pub fn to_human(raw: &str, decimals: u32) -> Option<BigDecimal> {
+    let v: BigDecimal = raw.parse().ok()?;
+    Some(v / exponent_to_big_decimal(decimals))
+}
+
+/// USD value of one leg of a swap, or `None` when it cannot be anchored.
+///
+/// Three anchors, in the subgraph's own order of trust: a stablecoin leg is
+/// already USD; a native leg converts through the single anchor pool; anything
+/// else needs a `derived_native:` entry, which only exists for whitelisted
+/// tokens priced against native in a pool that cleared the depth floor.
+///
+/// Everything else returns `None` and the row stays unpriced. That is the whole
+/// point: an empty USD column is a visible gap, a fabricated one is a number
+/// somebody trades on.
+pub fn usd_for_leg(
+    token: &str,
+    human_amount: &BigDecimal,
+    native_usd: Option<&BigDecimal>,
+    derived_native: Option<&BigDecimal>,
+) -> Option<BigDecimal> {
+    if is_stablecoin(token) {
+        return Some(human_amount.clone());
+    }
+    let nusd = native_usd?;
+    if is_native_or_wrapped(token) {
+        return Some(human_amount.clone() * nusd.clone());
+    }
+    Some(human_amount.clone() * derived_native?.clone() * nusd.clone())
+}
+
+/// The subgraph's `getTrackedAmountUSD` shape: prefer whichever leg is anchored,
+/// and when both are, take the average rather than double-counting.
+pub fn tracked_amount_usd(
+    usd0: Option<&BigDecimal>,
+    usd1: Option<&BigDecimal>,
+) -> Option<BigDecimal> {
+    match (usd0, usd1) {
+        (Some(a), Some(b)) => Some((a.clone() + b.clone()) / BigDecimal::from(2)),
+        (Some(a), None) => Some(a.clone()),
+        (None, Some(b)) => Some(b.clone()),
+        (None, None) => None,
+    }
+}
+
+/// Absolute value of a BigDecimal — magnitude, for USD sizing.
+pub fn abs_bd(v: &BigDecimal) -> BigDecimal {
+    if v < &BigDecimal::zero() { v.clone() * BigDecimal::from(-1) } else { v.clone() }
+}
+
+#[cfg(test)]
+mod anchor_verified_tests {
+    use super::*;
+
+    /// The anchor pool's own price, checked against the subgraph's `Bundle`.
+    ///
+    /// sqrtPriceX96 read live from PoolManager slot0 via `extsload` on the
+    /// hardcoded anchor ([`STABLECOIN_NATIVE_POOL_ID`], WETH/USDC, lpFee 500).
+    /// Computed 2445.378 USD/ETH against the deployed subgraph's
+    /// ethPriceUSD 2436.7017 — 0.36% apart, which is ETH moving between the two
+    /// reads, not a maths error. The assertion is deliberately a band: pinning
+    /// an exact figure would make this test a clock.
+    ///
+    /// What it actually pins is the ORIENTATION. If `STABLECOIN_IS_TOKEN0` were
+    /// flipped, this would read 0.000409 instead of 2445 — off by six orders of
+    /// magnitude, which is the failure this guards.
+    #[test]
+    fn anchor_pool_yields_a_sane_native_usd_price() {
+        let sqrt: BigInt = "3917893288612525659445280".parse().unwrap();
+        // token0 = WETH (18), token1 = USDC (6)
+        let (price0, price1) = sqrt_price_x96_to_token_prices(&sqrt, 18, 6);
+        let native_usd = if STABLECOIN_IS_TOKEN0 { price0 } else { price1 };
+
+        let v: f64 = native_usd.to_string().parse().unwrap();
+        assert!(
+            (1_000.0..10_000.0).contains(&v),
+            "native USD price {v} is outside any plausible ETH range — \
+             orientation or decimals are wrong"
+        );
+    }
+
+    /// A stablecoin leg is already USD and needs no anchor at all.
+    #[test]
+    fn stablecoin_leg_prices_without_a_native_price() {
+        let amt: BigDecimal = "1500.25".parse().unwrap();
+        let usd = usd_for_leg(USDC, &amt, None, None).expect("stablecoin must price");
+        assert_eq!(usd.to_string(), "1500.25");
+    }
+
+    /// An unanchorable token stays unpriced rather than being invented.
+    #[test]
+    fn unknown_token_stays_unpriced() {
+        let amt: BigDecimal = "1000".parse().unwrap();
+        let nusd: BigDecimal = "2400".parse().unwrap();
+        assert!(usd_for_leg("0xdeadbeef00000000000000000000000000000000", &amt, Some(&nusd), None).is_none());
+    }
+
+    /// Both legs anchored averages rather than double-counting.
+    #[test]
+    fn tracked_amount_averages_two_anchored_legs() {
+        let a: BigDecimal = "100".parse().unwrap();
+        let b: BigDecimal = "102".parse().unwrap();
+        assert_eq!(tracked_amount_usd(Some(&a), Some(&b)).unwrap().to_string(), "101");
+        assert_eq!(tracked_amount_usd(Some(&a), None).unwrap().to_string(), "100");
+        assert!(tracked_amount_usd(None, None).is_none());
+    }
+}

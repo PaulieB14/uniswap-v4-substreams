@@ -193,6 +193,17 @@ fn push_swap(changes: &mut DatabaseChanges, swap: &pb::Swap, idx: usize) {
         tc.change("token1", ("", swap.token1.as_str()));
         tc.change("fee_tier", (0u64, swap.fee_tier));
         tc.change("tick_spacing", (0i32, swap.tick_spacing));
+        // USD and human-readable amounts. Populated only when the price store
+        // could anchor the swap; `priced` separates "not anchored" from
+        // "genuinely zero", which a bare 0 in amount_usd cannot.
+        tc.change("amount0_adjusted", ("", swap.amount0_adjusted.as_str()));
+        tc.change("amount1_adjusted", ("", swap.amount1_adjusted.as_str()));
+        tc.change("amounts_adjusted", (false, swap.amounts_adjusted));
+        tc.change("amount0_usd", ("", swap.amount0_usd.as_str()));
+        tc.change("amount1_usd", ("", swap.amount1_usd.as_str()));
+        tc.change("amount_usd", ("", swap.amount_usd.as_str()));
+        tc.change("native_price_usd", ("", swap.native_price_usd.as_str()));
+        tc.change("priced", (false, swap.priced));
         set_hook_identity(tc, swap.hook.as_ref());
         set_meta(tc, swap.meta.as_ref());
     }

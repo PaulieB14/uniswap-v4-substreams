@@ -73,7 +73,7 @@ re-derived — a block replayed by a parallel backfill worker does not double-ad
 | hook_stats / hook_totals | 184 / 184 |
 | position / position_event | 34 / 34 |
 
-`cargo test --lib` — **88 passing**, including price maths pinned against chain `extsload` *and*
+`cargo test --lib` — **92 passing**, including price maths pinned against chain `extsload` *and*
 the deployed subgraph on the asymmetric-decimals case (VVV/cbBTC, 18 vs 8): computed
 `token0Price` 4676.0682880466 against the subgraph's 4676.06828804666294…
 
@@ -99,12 +99,17 @@ them.
 
 ## Known gaps
 
-- **USD pricing is not wired.** The maths is implemented and verified (`src/pricing.rs`, tests
-  pinned against chain and subgraph), but there is no `store_prices` handler and nothing populates
-  `swap.amount_usd`. The `amount_usd` / `native_price_usd` / `priced` columns exist and are always
-  empty. Do not read them.
-- **Decimal-adjusted amount columns are never populated.** `amount0_adjusted` etc. exist in the
-  proto and schema; nothing fills them. Raw integers are correct and exact — use those.
+- **USD pricing is wired but unproven at scale.** `store_prices` maintains the native price off
+  the hardcoded WETH/USDC anchor and `map_totals` attaches `amount0_usd` / `amount1_usd` /
+  `amount_usd` / `native_price_usd` / `priced`. The maths is pinned by tests against chain
+  `extsload` and the subgraph (anchor computes 2445.38 USD/ETH against the subgraph's 2436.70,
+  0.36% apart — ETH moving between reads). What is NOT demonstrated is a populated USD column over
+  a real range: that needs the price store built from block 25350988, which exceeds the
+  10,000-block request limit on this tier. Filter on `priced`, never on `amount_usd > 0` — an
+  unanchored swap and a genuinely zero-value swap both read 0.
+- **Only anchorable swaps get a USD value**, by design: a stablecoin leg, a native leg, or a
+  whitelisted token with a derived-native price. Everything else stays unpriced rather than
+  routed through an arbitrary intermediate.
 - **Swap amount signs are raw on-chain (swapper-centric).** The subgraph negates to pool-centric
   *and* divides by decimals, so rows are sign-flipped versus it.
 - **`Donate` and `ProtocolFeeUpdated` decoders are present but unexercised.** Zero rows in the

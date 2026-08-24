@@ -227,7 +227,18 @@ CREATE TABLE IF NOT EXISTS swap
     gas_used        BIGINT,
     gas_price       NUMERIC(78,0),
 
-    CONSTRAINT swap_pk PRIMARY KEY (id)
+    CONSTRAINT swap_pk PRIMARY KEY (id),
+    amount0_adjusted        NUMERIC,
+    amount1_adjusted        NUMERIC,
+    amounts_adjusted        BOOLEAN,
+    -- USD is populated only when a leg is a stablecoin, native, or a whitelisted
+    -- token with a derived-native price. Filter on `priced`, not on
+    -- amount_usd > 0: an unanchored swap and a zero-value swap both read 0.
+    amount0_usd             NUMERIC,
+    amount1_usd             NUMERIC,
+    amount_usd              NUMERIC,
+    native_price_usd        NUMERIC,
+    priced                  BOOLEAN
 );
 
 -- "Recent swaps in this pool" — the single most common V4 query. DESC so the

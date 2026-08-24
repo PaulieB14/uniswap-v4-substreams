@@ -171,6 +171,14 @@ modules:
   # writers for them (both owned elsewhere). Once they exist, adopting the
   # totals is one line — point db_out's input at map_totals. It is a strict
   # superset of map_enriched's output, so nothing already written changes.
+  - name: store_prices
+    kind: store
+    updatePolicy: set
+    valueType: string
+    initialBlock: 25350988
+    inputs:
+      - map: map_enriched
+
   - name: map_totals
     kind: map
     initialBlock: 25350988
@@ -179,6 +187,8 @@ modules:
       - store: store_pool_totals
         mode: get
       - store: store_hook_totals
+        mode: get
+      - store: store_prices
         mode: get
     output:
       type: proto:uniswap.v4.v1.Events

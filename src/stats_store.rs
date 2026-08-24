@@ -84,7 +84,7 @@ use std::collections::BTreeMap;
 
 use substreams::errors::Error;
 use substreams::scalar::BigInt;
-use substreams::store::{StoreAdd, StoreAddBigInt, StoreGet, StoreGetBigInt, StoreNew};
+use substreams::store::{StoreAdd, StoreAddBigInt, StoreGet, StoreGetBigInt, StoreNew, StoreGetString};
 
 use crate::pb::uniswap::v4::v1 as pb;
 
@@ -505,12 +505,72 @@ pub fn map_totals(
     events: pb::Events,
     pool_totals: StoreGetBigInt,
     hook_totals: StoreGetBigInt,
+    prices: StoreGetString,
 ) -> Result<pb::Events, Error> {
-    Ok(totals(
+    let mut out = totals(
         events,
         |key| pool_totals.get_last(key),
         |key| hook_totals.get_last(key),
-    ))
+    );
+    attach_usd(&mut out, &prices);
+    Ok(out)
+}
+
+/// Fill the USD columns on every swap the price store can anchor.
+///
+/// Done here rather than in `map_enriched` because `store_prices` is fed BY
+/// map_enriched — reading it there would be a cycle. This is the first stage
+/// downstream of the store, and it already passes the whole block through.
+///
+/// A swap is left unpriced unless a leg is a stablecoin, native, or a
+/// whitelisted token with a `derived_native:` entry. `priced` records which
+/// happened so a consumer can filter instead of guessing why a zero is a zero.
+fn attach_usd(events: &mut pb::Events, prices: &StoreGetString) {
+    use substreams::store::StoreGet;
+    let native_usd = prices
+        .get_last(crate::pricing::NATIVE_USD_KEY)
+        .and_then(|v| crate::pricing::decode_price_value(&v))
+        .map(|r| r.price);
+
+    for s in events.swaps.iter_mut() {
+        let (d0, d1) = match (
+            crate::pricing::effective_decimals(&s.token0, s.token0_decimals, s.decimals_measured),
+            crate::pricing::effective_decimals(&s.token1, s.token1_decimals, s.decimals_measured),
+        ) {
+            (Some(a), Some(b)) => (a, b),
+            // No measured decimals means no honest human amount, so no USD.
+            _ => continue,
+        };
+        let (h0, h1) = match (
+            crate::pricing::to_human(&s.amount0, d0),
+            crate::pricing::to_human(&s.amount1, d1),
+        ) {
+            (Some(a), Some(b)) => (a, b),
+            _ => continue,
+        };
+        let dn = |t: &str| {
+            prices
+                .get_last(crate::pricing::derived_native_key(t))
+                .and_then(|v| crate::pricing::decode_price_value(&v))
+                .map(|r| r.price)
+        };
+        let u0 = crate::pricing::usd_for_leg(
+            &s.token0, &crate::pricing::abs_bd(&h0), native_usd.as_ref(), dn(&s.token0).as_ref());
+        let u1 = crate::pricing::usd_for_leg(
+            &s.token1, &crate::pricing::abs_bd(&h1), native_usd.as_ref(), dn(&s.token1).as_ref());
+
+        if let Some(a) = &u0 { s.amount0_usd = a.to_string(); }
+        if let Some(b) = &u1 { s.amount1_usd = b.to_string(); }
+        if let Some(t) = crate::pricing::tracked_amount_usd(u0.as_ref(), u1.as_ref()) {
+            s.amount_usd = t.to_string();
+            s.priced = true;
+        }
+        if let Some(n) = &native_usd { s.native_price_usd = n.to_string(); }
+        // Human-readable amounts, signed, only when both decimals were measured.
+        s.amount0_adjusted = h0.to_string();
+        s.amount1_adjusted = h1.to_string();
+        s.amounts_adjusted = true;
+    }
 }
 
 /// Magnitude of a signed decimal-integer string.
