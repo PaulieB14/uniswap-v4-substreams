@@ -117,15 +117,102 @@ modules:
     inputs:
       - map: map_events
 
-  # Stage 4 — sink. Consumes map_enriched, NOT map_events: pointing it at
-  # map_events is exactly the defect this change fixes, and would leave
-  # swap.token0/token1/fee_tier/hook empty in Postgres and drop pool_stats /
-  # hook_stats entirely.
-  - name: db_out
+  # ---------------------------------------------------------------------------
+  # Stage 3b — ACCUMULATE. Lifetime totals for pools and hooks.
+  #
+  # These exist because pool_stats/hook_stats from map_enriched are per-block
+  # DELTAS and a `map` cannot be anything else: parallel backfill re-executes it
+  # out of order, so it has nowhere to keep a carry. An add-policy STORE can,
+  # and is the only structure here that is safe to accumulate in — the engine
+  # re-derives a store from a known base snapshot on every replay, so running a
+  # block twice yields the same total, whereas a sink-side
+  # `UPDATE … SET n = n + d` has no idea which blocks are already in the number
+  # and drifts permanently. Full argument in src/stats_store.rs.
+  #
+  # updatePolicy: add + valueType: bigint. bigint, not int64: these keys hold
+  # uint256 volume sums as well as counts, and int64 would wrap on the first
+  # 18-decimal token.
+  # ---------------------------------------------------------------------------
+
+  # Per-pool. Reads map_events, NOT map_enriched: a pool delta needs only
+  # pool_id and the amounts, which are on the raw row, so this store stays off
+  # the store_pools/store_tokens dependency (and off store_tokens' eth_calls).
+  # The counts are identical either way — enrichment fills fields, it never adds
+  # or removes a row.
+  - name: store_pool_totals
+    kind: store
+    updatePolicy: add
+    valueType: bigint
+    initialBlock: 25350988
+    inputs:
+      - map: map_events
+
+  # Per-hook. MUST read map_enriched: a raw Swap log carries only the poolId, so
+  # the hook is not on the row until store_pools has been joined onto it.
+  - name: store_hook_totals
+    kind: store
+    updatePolicy: add
+    valueType: bigint
+    initialBlock: 25350988
+    inputs:
+      - map: map_enriched
+
+  # Stage 3c — READ BACK. Emits the current lifetime total for every pool/hook
+  # the block touched, into Events.pool_totals / Events.hook_totals, and passes
+  # everything else through unchanged.
+  #
+  # Input order MUST match the map_totals signature in src/stats_store.rs:
+  # (events, pool_totals, hook_totals). Both stores are StoreGetBigInt, so
+  # swapping the two store lines compiles and runs and silently reports every
+  # total as 0 — the pool:/hook: key prefixes are what make that detectable.
+  #
+  # Not yet on the db_out path: db_out still consumes map_enriched, because
+  # db/schema.sql has no pool_totals/hook_totals tables and src/db_out.rs has no
+  # writers for them (both owned elsewhere). Once they exist, adopting the
+  # totals is one line — point db_out's input at map_totals. It is a strict
+  # superset of map_enriched's output, so nothing already written changes.
+  - name: map_totals
     kind: map
     initialBlock: 25350988
     inputs:
       - map: map_enriched
+      - store: store_pool_totals
+        mode: get
+      - store: store_hook_totals
+        mode: get
+    output:
+      type: proto:uniswap.v4.v1.Events
+
+  # ---------------------------------------------------------------------------
+  # Stage 3d — PRICE. Native price in USD plus each whitelisted token's price in
+  # native, the port of the subgraph's Bundle/derivedETH (src/pricing.rs).
+  #
+  # MUST read map_enriched, not map_events: pricing needs the token addresses
+  # and their decimals ON the row, and a raw V4 Swap log carries only the
+  # poolId. Those fields are exactly what map_enriched joins on from
+  # store_pools and store_tokens.
+  #
+  # It also means this module inherits store_tokens' `decimals_measured` flag,
+  # which is the whole safety property — an unmeasured decimals value produces
+  # NO price rather than one that is wrong by a power of ten.
+  #
+  # updatePolicy: set + valueType: string — a price is current state, so every
+  # observation replaces the last. Values are
+  # "price<US>native_locked<US>source_pool<US>block"; the block field is the
+  # staleness handle, because a set store happily serves a price from ten
+  # thousand blocks ago if the source pool has not traded since.
+  #
+  # Zero RPC: everything is arithmetic over fields already on the row.
+  # ---------------------------------------------------------------------------
+
+  - name: db_out
+    kind: map
+    initialBlock: 25350988
+    inputs:
+      # map_totals, NOT map_enriched. totals() passes the whole block through and
+      # appends PoolTotals/HookTotals, so reading map_enriched here would silently
+      # drop every running-total row — the same dead-branch defect store_tokens had.
+      - map: map_totals
     output:
       type: proto:sf.substreams.sink.database.v1.DatabaseChanges
 

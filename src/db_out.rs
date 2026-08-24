@@ -89,6 +89,13 @@ pub fn db_out(events: pb::Events) -> Result<DatabaseChanges, Error> {
         push_hook_stats(&mut changes, hs, idx);
     }
 
+    for (i, pt) in events.pool_totals.iter().enumerate() {
+        push_pool_totals(&mut changes, pt, i);
+    }
+    for (i, ht) in events.hook_totals.iter().enumerate() {
+        push_hook_totals(&mut changes, ht, i);
+    }
+
     Ok(changes)
 }
 
@@ -528,4 +535,45 @@ fn is_zero_address(value: &str) -> bool {
 /// Falls back to the vector position only if the mapper omitted `meta`.
 fn ordinal_of(meta: Option<&pb::Meta>, fallback: usize) -> u64 {
     meta.map(|m| m.log_index as u64).unwrap_or(fallback as u64)
+}
+
+/// Lifetime totals, maintained by the add-policy stores.
+///
+/// Distinct from `push_pool_stats`, which writes per-block deltas. Both are
+/// emitted because they answer different questions and neither derives from the
+/// other cheaply: deltas SUM over an arbitrary range, totals give "as of now"
+/// without scanning history.
+fn push_pool_totals(changes: &mut DatabaseChanges, pt: &pb::PoolTotals, idx: usize) {
+    if pt.pool_id.is_empty() {
+        return;
+    }
+    let id = format!("{}-{}", pt.pool_id, pt.last_block);
+    let tc = changes.push_change("pool_totals", &id, stats_ordinal(idx), Operation::Create);
+    tc.change("pool_id", ("", pt.pool_id.as_str()));
+    tc.change("block_number", (0u64, pt.last_block));
+    tc.change("token0", ("", pt.token0.as_str()));
+    tc.change("token1", ("", pt.token1.as_str()));
+    tc.change(
+        "hook_address",
+        ("", pt.hook.as_ref().map(|h| h.address.as_str()).unwrap_or("")),
+    );
+    tc.change("swap_count", ("0", numeric(&pt.swap_count)));
+    tc.change("modify_liquidity_count", ("0", numeric(&pt.modify_liquidity_count)));
+    tc.change("volume_token0_abs", ("0", numeric(&pt.volume_token0_abs)));
+    tc.change("volume_token1_abs", ("0", numeric(&pt.volume_token1_abs)));
+}
+
+fn push_hook_totals(changes: &mut DatabaseChanges, ht: &pb::HookTotals, idx: usize) {
+    if ht.hook_address.is_empty() {
+        return;
+    }
+    let id = format!("{}-{}", ht.hook_address, ht.last_block);
+    let tc = changes.push_change("hook_totals", &id, stats_ordinal(idx), Operation::Create);
+    tc.change("hook_address", ("", ht.hook_address.as_str()));
+    tc.change("block_number", (0u64, ht.last_block));
+    tc.change("pool_count", ("0", numeric(&ht.pool_count)));
+    tc.change("swap_count", ("0", numeric(&ht.swap_count)));
+    tc.change("modify_liquidity_count", ("0", numeric(&ht.modify_liquidity_count)));
+    tc.change("volume_token0_abs", ("0", numeric(&ht.volume_token0_abs)));
+    tc.change("volume_token1_abs", ("0", numeric(&ht.volume_token1_abs)));
 }

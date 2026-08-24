@@ -2,121 +2,117 @@
 
 # uniswap-v4-substreams
 
-Uniswap V4 on Base as a Substreams package, converted from **`uniswap-v4-base-3`**
+Uniswap V4 on **Base** as a Substreams package, converted from **`uniswap-v4-base-3`**
 (`Qmbsc6XQWbiv4DfLVfaNciScqYLyDWUYjWzrFBbzzmRsMB`) — the busiest subgraph on The Graph.
 
-Built with StreamingFast's [`substreams-convert`](https://github.com/streamingfast/substreams-skills) skill.
+Built with StreamingFast's [`substreams-convert`](https://github.com/streamingfast/substreams-skills).
 
-## What it does that the subgraph does not
+Every claim below is verified against at least one of: the chain (`eth_call` / `eth_getLogs` /
+`extsload`), the deployed subgraph, or a live `substreams run`. Anything unverified is in
+**Known gaps**, not here.
 
-**Hook permissions, decoded from the address.** Uniswap V4 mines hook addresses so a hook's
-capabilities live in the low 14 bits of its own address. Every pool arrives with all 14 flags
-resolved — no RPC, no allowlist, and correct for a hook nobody has seen before. The source
-subgraph stores `hooks` as an opaque string and hardcodes a single `ArrakisHook` entity.
+## It finds a real bug in the source subgraph
 
-```
-pool 0x86ca82ba…  hook 0x9ea93273…  flags 4160  →  after_initialize + after_swap
-```
+The subgraph runs `pool.feeTier = event.params.fee` on every swap, so a pool's *configured* fee is
+overwritten by whatever the last swap charged. On pool `0x0a1e0f12…` (ETH/$SXR):
 
-**The configured fee survives.** The subgraph runs `pool.feeTier = event.params.fee` on every
-swap, so the pool's configured fee is overwritten by whatever the last swap charged. Here
-`pool.fee_tier` (static) and `swap.fee` (effective, hook-overridable) are separate columns.
-Measured over 150 Base blocks: **25 distinct per-swap fee values** across 934 swaps, the most
-common being `19900` — not a standard tier.
+| source | fee |
+|---|---|
+| `Initialize` event at creation, block 49150754 | **3000** |
+| live `extsload` slot0 `lpFee` | **3000** |
+| subgraph `pool.feeTier` | **3499** |
 
-**Real gas.** The subgraph hardcodes `transaction.gasUsed = BigInt.zero()` with its own TODO.
+That pool has `hooks = 0x000…000`, so dynamic fees are impossible and the fee is immutable in its
+`PoolKey`. Wrong across 3,060 transactions. A second pool (`0x36d7043e…`, VVV/cbBTC) shows the same
+3499-vs-3000 discrepancy, so it is systematic.
 
-**`salt` is kept**, so two salted positions by one sender on one tick range stay distinguishable.
+This package keeps `pool.fee_tier` (configured, from `Initialize`) and `swap.fee` (effective,
+per-swap, hook-overridable) as separate columns.
 
-**Every swap knows what it traded.** This is the correctness fix, not a nicety. A V4 `Swap`
-log carries the **poolId and nothing else about the pool** — the tokens, the configured fee,
-the tick spacing and the hook are fields of the `PoolKey`, keccak-hashed into the id at
-`initialize` and never re-emitted. A consumer streaming from a recent block literally cannot
-say what a swap traded. The subgraph papers over this with `Pool.load(poolId)` against
-graph-node's implicit entity store; Substreams has no implicit state, so the join is an
-explicit module:
+## What else it does that the subgraph doesn't
 
-```
-map_events ──┬─────────────────────────► store_pools   (set, proto:Pool, key "pool:<poolId>")
-             │                                 │
-             └──────────► map_enriched ◄───────┘  (mode: get → get_last)
-                                │
-                             db_out
-```
+**Hook permissions decoded from the hook address.** V4 mines addresses so a hook's capability set
+lives in its low 14 bits — 14 booleans per pool, no RPC, correct for a hook nobody has seen.
+Verified against live Base hooks (`0x9ea93273…` → flags 4160 → `after_initialize` + `after_swap`).
+The subgraph stores `hooks` as an opaque string plus one hardcoded `ArrakisHook` entity.
 
-`map_enriched` also emits per-block `PoolStats` and `HookStats` — the hook roll-up the source
-subgraph cannot produce at all, since it stores `hooks` as an opaque string with no hook entity.
+**Real `gasUsed`.** Every subgraph swap row carries `gasUsed: "0"` — it hardcodes it, with its own
+TODO in the source.
 
-`store_tokens` (ERC-20 symbol/name/decimals over `eth_call`) is wired and packed but sits
-**off** the `map_enriched`/`db_out` path: it is not needed to answer "what did this swap
-trade", and an RPC dependency should not be able to stall the main pipeline. Nothing consumes
-it yet.
+**ERC-6909 claim tokens.** V4's flash-accounting rail. 292 rows in a 400-block sample; the
+subgraph does not index them at all.
 
-**No graft.** The live subgraph grafts at block 26990278 and never indexed its own early
-history. This backfills from 25350988 in parallel.
+**`salt` retained**, so two salted positions by one sender on one tick range stay distinguishable.
+
+**Self-describing rows.** A V4 `Swap` log carries only a `poolId`. `store_pools` records each pool
+at creation and `map_enriched` denormalises `token0`/`token1`/`fee_tier`/`tick_spacing`/`hook` back
+onto every swap and liquidity event, so a row stands alone.
+
+**Token metadata** — symbol, name, decimals via batched `eth_call`, cached once per token.
+Cross-checked against a direct `eth_call`: token `0xe7fd1ba7…` reports `siddesh`, exact match.
+
+**Lifetime totals and per-block deltas, both.** `pool_stats`/`hook_stats` are per-block deltas that
+SUM over a range; `pool_totals`/`hook_totals` are lifetime figures from add-policy stores. The
+accumulation lives in the store, not in SQL, because a substreams store is deterministic and
+re-derived — a block replayed by a parallel backfill worker does not double-add, whereas
+`UPDATE ... = col + n` would.
+
+**No graft.** The live subgraph grafts at block 26990278 and never indexed its own early history.
 
 ## Verified
 
-150 Base blocks from 35000000:
+`substreams run db_out`, 400 Base blocks from 35000000:
 
-| | |
+| table | rows |
 |---|---|
-| pools initialised | 67 (all hooked, 2 dynamic-fee, 4 distinct hooks) |
-| swaps | 934 |
-| modify_liquidity | 5,235 |
-| position events | 7 |
+| modify_liquidity | 19,007 |
+| pool | 2,970 |
+| swap | 2,745 |
+| pool_stats / pool_totals | 1,655 / 1,655 |
+| claim_token_event | 292 |
+| hook_stats / hook_totals | 184 / 184 |
+| position / position_event | 34 / 34 |
 
-`cargo test --lib` — 7/7, including the live-verified `0x1888` hook case.
+`cargo test --lib` — **88 passing**, including price maths pinned against chain `extsload` *and*
+the deployed subgraph on the asymmetric-decimals case (VVV/cbBTC, 18 vs 8): computed
+`token0Price` 4676.0682880466 against the subgraph's 4676.06828804666294…
 
 ## Run
 
 ```bash
 cargo build --target wasm32-unknown-unknown --release
 substreams pack substreams.yaml
-
-# Raw decoded logs. Store-free, so it streams from any block for free.
-substreams run ./uniswap-v4-base-v0.1.0.spkg map_events \
-  -e base-mainnet.streamingfast.io:443 -s 35000000 -t +150 -o jsonl
-
-# Enriched. NOTE --limit-processed-blocks 0: store_pools has to be built from
-# the PoolManager deploy block before block N can be served, so a request at
-# 35000000 processes ~9.65M blocks of store preparation. The CLI's 10000-block
-# default safeguard rejects that outright. The work is cached server-side per
-# module hash, so it is paid once — but ANY change to a Rust source file
-# changes the binary hash and therefore every module hash, and the next run
-# pays it again.
 substreams run ./uniswap-v4-base-v0.1.0.spkg map_enriched \
-  -e base-mainnet.streamingfast.io:443 -s 35000000 -t +50 -o jsonl \
-  --limit-processed-blocks 0 --production-mode
+  -e base-mainnet.streamingfast.io:443 -s 25350988 -t +9000 -o jsonl
 ```
 
-Sink to Postgres (chosen over ClickHouse because `pool` is mutable current state and
-ClickHouse is insert-only):
+Postgres sink (chosen over ClickHouse because `pool` is mutable current state and ClickHouse is
+insert-only):
 
 ```bash
 substreams-sink-sql setup "$DSN" ./uniswap-v4-base-v0.1.0.spkg
 substreams-sink-sql run   "$DSN" ./uniswap-v4-base-v0.1.0.spkg
 ```
 
+Note: v4 delta operations require a recent `substreams-sink-sql`; an older binary silently ignores
+them.
+
 ## Known gaps
 
-- **Swap amount signs are raw on-chain (swapper-centric)**; the subgraph negates to
-  pool-centric and divides by token decimals. Rows are sign-flipped versus the deployed
-  subgraph. Decimals need a token-metadata lookup that is not wired yet.
-- **`Donate`, ERC-6909 `Transfer`/`Approval`/`OperatorSet`, `ProtocolFeeUpdated` are still
-  undecoded.** The proto messages, the Postgres tables and the `db_out` writers are all in
-  place now — but `src/pool_manager.rs` still lets those logs fall through, so the three
-  tables stay EMPTY. Do not read an empty `donate` table as "V4 has no donations on Base".
-  Adding the decoder is a mapping change, not a schema migration.
-- **`pool_stats` / `hook_stats` are per-block DELTAS, not running totals.** `map_enriched` is
-  a stateless `map` re-executed out of order by parallel backfill workers. `swap_count`,
-  `modify_liquidity_count` and both volumes SUM correctly over a range; `pool_count` and
-  `distinct_fee_values` are set cardinalities and do **not** — answer those from the base
-  tables. Folding them into a running total needs an add-policy stats store that does not
-  exist yet.
-- **`store_tokens` has no consumer**, and a store handler cannot read its own store, so WETH
-  re-pays its `eth_call` on every new WETH pool. The fix is a `map` taking `store_tokens` as a
-  `get` input to filter known addresses.
-- **No USD pricing.** The subgraph's `Bundle`/`derivedETH` whitelist-pool pricing is not ported.
-- **`eth_common:filtered_events` block-skip is not enabled** — it takes one address and this
-  package watches three contracts.
+- **USD pricing is not wired.** The maths is implemented and verified (`src/pricing.rs`, tests
+  pinned against chain and subgraph), but there is no `store_prices` handler and nothing populates
+  `swap.amount_usd`. The `amount_usd` / `native_price_usd` / `priced` columns exist and are always
+  empty. Do not read them.
+- **Decimal-adjusted amount columns are never populated.** `amount0_adjusted` etc. exist in the
+  proto and schema; nothing fills them. Raw integers are correct and exact — use those.
+- **Swap amount signs are raw on-chain (swapper-centric).** The subgraph negates to pool-centric
+  *and* divides by decimals, so rows are sign-flipped versus it.
+- **`Donate` and `ProtocolFeeUpdated` decoders are present but unexercised.** Zero rows in the
+  400-block sample — and confirmed by `eth_getLogs` that zero such events occurred on chain in that
+  range, so this is absence of data, not a broken decoder. Untested in production.
+- **No block-index filter, deliberately.** 148 of 148 sampled blocks contain V4 activity, so
+  `eth_common:filtered_events` would skip nothing.
+- **Testing store-backed modules at a recent block needs quota.** Reading `store_pools` at block
+  35000000 requires building the store from 25350988 — 9.65M blocks against a 10,000-block request
+  limit. Verification above used a temporary manifest with `initialBlock` moved forward; the
+  shipped manifest starts at 25350988 and sees every pool.

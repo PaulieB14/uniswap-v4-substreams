@@ -112,6 +112,57 @@ message Swap {
   uint32 token1_decimals = 19;
   bool   decimals_measured = 20;
 
+  // ---- fields 21-28: HUMAN UNITS and USD -----------------------------------
+  //
+  // SIGN CONVENTION. `amount0`/`amount1` above are the raw int128s the
+  // PoolManager emits, and those are SWAPPER-CENTRIC: negative means the
+  // swapper paid that token in, positive means the swapper received it out.
+  // The `*_adjusted` fields below are POOL-CENTRIC and therefore carry the
+  // OPPOSITE sign, matching the subgraph, which does
+  // `convertTokenToDecimal(event.params.amount0.neg(), token0.decimals)`:
+  //
+  //     amountN_adjusted = -amountN / 10^tokenN_decimals
+  //
+  // so a positive `amount0_adjusted` means the POOL RECEIVED token0. Both
+  // spellings are kept because they answer different questions and neither is
+  // recoverable from the other without the decimals: the raw integer is exact
+  // and is what the chain said, the adjusted value is what a human or a price
+  // feed wants. Do not delete the raw pair to "save space" — a NUMERIC that has
+  // been divided is no longer the on-chain value.
+  //
+  // Written ONLY when `amounts_adjusted` is true, i.e. when BOTH legs' decimals
+  // were actually read over RPC (`decimals_measured`). Scaling by a defaulted 18
+  // is wrong by a power of ten on every USDC row, and a plausible wrong number
+  // is worse than an absent one. When false these are the empty string and the
+  // sink writes 0 — read the flag, not the value.
+  string amount0_adjusted = 21;
+  string amount1_adjusted = 22;
+  bool   amounts_adjusted = 23;
+
+  // USD valuation, from `store_prices` (the port of the subgraph's
+  // Bundle.ethPriceUSD / Token.derivedETH). Per-leg values are SIGNED and carry
+  // the same pool-centric sign as `*_adjusted`.
+  //
+  // The price used is the one standing IMMEDIATELY BEFORE this log, not after
+  // it — a trade is valued at the price it hit, not the price it created. That
+  // is also what the deployed subgraph does, verifiably: it updates
+  // `bundle.ethPriceUSD` from the anchor pool after computing `amountUSD`.
+  string amount0_usd = 24;
+  string amount1_usd = 25;
+  // Non-negative TRACKED notional, the analogue of the subgraph's `amountUSD`:
+  // the mean of the two absolute leg values when both legs are priced, else the
+  // single priced leg's absolute value. Mean rather than sum because the two
+  // legs are the two sides of ONE trade; summing double-counts it.
+  string amount_usd = 26;
+  // The native (ETH) price in USD that the three fields above were computed
+  // with, carried per row so a USD figure is auditable without re-deriving the
+  // bundle. A `set` store serves the last known price indefinitely, so this is
+  // also the only handle on staleness.
+  string native_price_usd = 27;
+  // True iff `amount_usd` was computable. Distinguishes "this trade was worth
+  // $0.00" from "this trade could not be priced" — a zero is otherwise
+  // indistinguishable and launders straight into every downstream total.
+  bool   priced = 28;
 }
 
 message ModifyLiquidity {
@@ -143,6 +194,13 @@ message ModifyLiquidity {
   uint32 token1_decimals = 17;
   bool   decimals_measured = 18;
 
+  // NOTE the deliberate absence of a `liquidity_delta_adjusted`. Unlike a swap
+  // amount, `liquidity_delta` is NOT in token units — it is in units of L
+  // (sqrt(x*y)), the pool's virtual liquidity. Dividing it by token0's or
+  // token1's decimals would produce a number with no unit at all. Converting a
+  // liquidity delta into the token amounts it represents needs the position's
+  // tick range against the pool's current tick (the `liquidityMath/` tick-math
+  // port), which this package does not carry; see README "Known gaps".
 }
 
 message PositionEvent {
@@ -196,6 +254,15 @@ message PoolStats {
   // Block of the most recent event folded into these counters. Lets a sink
   // detect staleness and lets an upsert be idempotent on replay.
   uint64 last_block = 9;
+
+  // ---- fields 10-12, additive ----------------------------------------------
+  // The same two volumes in HUMAN UNITS: volume_tokenN_abs / 10^decimals(tokenN).
+  // No sign question arises — these are already absolute-value sums.
+  // Written only when both legs' decimals were RPC-measured; read
+  // `volumes_adjusted`, not the value, to tell "zero volume" from "no decimals".
+  string volume_token0_adjusted = 10;
+  string volume_token1_adjusted = 11;
+  bool   volumes_adjusted = 12;
 }
 
 // Running per-HOOK aggregates — the roll-up the source subgraph cannot produce
@@ -233,6 +300,26 @@ message Donate {
   string amount0  = 4;   // uint256, raw token units
   string amount1  = 5;
   Meta   meta     = 6;
+
+  // ---- fields 7-11, additive ----------------------------------------------
+  // Denormalised pool identity, same rationale and same source as on Swap: the
+  // Donate log carries only the poolId, so "what was donated" is unanswerable
+  // from the raw row. Filled by map_enriched from store_pools; empty means
+  // "pool not in the store".
+  string token0 = 7;
+  string token1 = 8;
+
+  // Human units. NOTE the sign convention differs from Swap and that is
+  // correct, not an oversight: `Donate.amount0/1` are UNSIGNED uint256 and a
+  // donation only ever flows INTO the pool, so the raw value is ALREADY
+  // pool-centric. These are therefore scaled but NOT negated:
+  //
+  //     amountN_adjusted = +amountN / 10^decimals(tokenN)
+  //
+  // Written only when both legs' decimals were RPC-measured, exactly as on Swap.
+  string amount0_adjusted = 9;
+  string amount1_adjusted = 10;
+  bool   amounts_adjusted = 11;
 }
 
 // ERC-6909 claim-token activity on the singleton: `Transfer(caller, from, to,
@@ -291,6 +378,103 @@ message ProtocolFeeEvent {
   Meta   meta     = 6;
 }
 
+// ---------------------------------------------------------------------------
+// LIFETIME totals. The running-total counterpart to PoolStats / HookStats.
+//
+// PoolStats/HookStats are per-block DELTAS and stay that way: they are produced
+// by a stateless `map` that parallel backfill re-executes out of order, so it
+// physically cannot hold a carry. These two messages are produced by a map that
+// READS an add-policy store, so every number below is the entity's total from
+// the PoolManager deploy block through the end of the block being processed.
+//
+// Emitted only for entities TOUCHED in the current block. A full snapshot of
+// every pool on every block would be O(pools) output per block restating
+// numbers that did not change.
+//
+// The SQL side must write these with a plain `SET column = EXCLUDED.column`
+// (an idempotent overwrite of an already-final number) and must NEVER do
+// `SET column = column + n` — see the module doc in src/stats_store.rs for why
+// the store accumulation is replay-safe and the database accumulation is not.
+// ---------------------------------------------------------------------------
+
+// Every numeric field here is a DECIMAL STRING, including the counts.
+//
+// They are read verbatim out of a `bigint` store, and volumes are uint256 sums
+// that overflow 64 bits routinely. Narrowing just the counts to uint64 would
+// add a lossy conversion for no gain — a Postgres NUMERIC column takes the
+// string either way — and would invite a consumer to treat a volume as a
+// count-sized integer. One type across the message removes that footgun.
+message PoolTotals {
+  string pool_id = 1;
+  // Denormalised so the totals row is self-describing, same rationale as
+  // PoolStats. Empty when the pool is absent from store_pools (stream started
+  // after its Initialize) — empty means "unknown", never "no token0".
+  string token0  = 2;
+  string token1  = 3;
+
+  string swap_count             = 4;
+  string modify_liquidity_count = 5;
+  // ABSOLUTE-value sums in RAW token units, same convention as PoolStats:
+  // V4 amounts are signed and swapper-centric, so a plain sum measures net flow
+  // and trends to zero on a two-sided market. Netting stays derivable from the
+  // raw swap rows; volume cannot be recovered from a net.
+  string volume_token0_abs      = 6;
+  string volume_token1_abs      = 7;
+
+  HookPermissions hook = 8;
+  // The block these totals are current AS OF. This is what makes the sink-side
+  // upsert safe under out-of-order delivery: guard the write with
+  // `WHERE excluded.last_block >= pool_totals.last_block` and a late-arriving
+  // older snapshot cannot walk the row backwards.
+  uint64 last_block = 9;
+
+  // ---- fields 10-12, additive ----------------------------------------------
+  // Lifetime volumes in HUMAN UNITS. Filled by `map_final`, not by `map_totals`:
+  // the add-policy store holds raw integers (it must — a bigint store cannot
+  // hold a fraction, and rounding each block's delta before summing would drift),
+  // and the decimals live on the block's enriched swap/liquidity rows. So the
+  // scaling happens in the last stage, once, on the finished total.
+  //
+  // A pool appears in `pool_totals` only when the block touched it, and every
+  // way of touching it (swap / modify_liquidity / initialize) produces an
+  // enriched row carrying its decimals — so coverage here is the same as
+  // coverage of `volume_token0_abs`, minus the pools whose decimals are
+  // unmeasured.
+  string volume_token0_adjusted = 10;
+  string volume_token1_adjusted = 11;
+  bool   volumes_adjusted = 12;
+}
+
+message HookTotals {
+  string hook_address = 1;
+  HookPermissions permissions = 2;
+
+  // Lifetime count of DISTINCT pools deployed under this hook.
+  //
+  // Addable — and it is worth being explicit about why, because summing a
+  // cardinality is normally wrong. This one is fed exclusively by `Initialize`
+  // logs, and V4's `initialize` reverts on an already-initialised pool, so a
+  // given poolId can emit exactly one Initialize for the life of the chain.
+  // Counting those logs IS counting distinct pools. That is an invariant of
+  // v4-core, not a property of addition; if the feed ever changes to anything
+  // that can repeat per pool, this field becomes a double-count.
+  string pool_count = 3;
+  string swap_count = 4;
+  string modify_liquidity_count = 5;
+  string volume_token0_abs = 6;
+  string volume_token1_abs = 7;
+  uint64 last_block = 8;
+
+  // NOTE the deliberate absence of `distinct_fee_values`, which HookStats has.
+  // It is a set cardinality with no on-chain uniqueness invariant behind it: a
+  // hook charging 19900 in a thousand blocks contributes 1 to each block's
+  // HookStats, and adding those gives 1000, not 1. An add store is the wrong
+  // structure for it; a lifetime distinct-fee count needs the fee VALUES
+  // retained (a set-policy store keyed `hook:<addr>:fee:<value>`, counted by
+  // prefix), which is a different module and is not built here. Do not
+  // reintroduce it as a sum.
+}
+
 message Events {
   repeated Pool            pools             = 1;
   repeated Swap            swaps             = 2;
@@ -309,4 +493,14 @@ message Events {
   repeated Donate           donates             = 8;
   repeated ClaimTokenEvent  claim_token_events  = 9;
   repeated ProtocolFeeEvent protocol_fee_events = 10;
+
+  // ---- fields 11-12, additive ----------------------------------------------
+  // LIFETIME totals for the entities touched in this block, read back out of
+  // the add-policy stats stores. Filled ONLY by `map_totals`; every other
+  // module leaves them empty, which is why they are additive fields on the
+  // existing Events rather than a new message type — `map_totals` is a
+  // pass-through stage over `map_enriched`, so one Events shape flows end to
+  // end and `db_out` can be repointed at it with a one-line manifest change.
+  repeated PoolTotals       pool_totals         = 11;
+  repeated HookTotals       hook_totals         = 12;
 }

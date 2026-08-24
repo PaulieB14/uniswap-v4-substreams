@@ -43,6 +43,8 @@ mod hooks;
 mod pb;
 mod pool_manager;
 mod position_manager;
+mod pricing;
+mod stats_store;
 mod store_pools;
 mod tokens;
 

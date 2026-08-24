@@ -667,3 +667,43 @@ CREATE TABLE IF NOT EXISTS protocol_fee_event
 
 CREATE INDEX IF NOT EXISTS pfe_pool_block_idx  ON protocol_fee_event (pool_id, block_number DESC) WHERE pool_id <> '';
 CREATE INDEX IF NOT EXISTS pfe_kind_block_idx  ON protocol_fee_event (kind, block_number DESC);
+
+-- ---------------------------------------------------------------------------
+-- Running totals.
+--
+-- Unlike pool_stats/hook_stats — which are per-block DELTAS and SUM over a
+-- range — these are LIFETIME figures maintained by substreams `add`-policy
+-- stores. That distinction matters: a substreams store is deterministic and
+-- re-derived by the engine, so a block replayed by a parallel backfill worker
+-- does not double-add. A Postgres `UPDATE ... = col + n` is not idempotent
+-- under the same replay, which is why the accumulation lives in the store and
+-- Postgres only ever sees the already-correct total.
+--
+-- One row per (entity, block) so history is queryable; take the row with the
+-- greatest block_number for "current".
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pool_totals (
+    id                      TEXT PRIMARY KEY,
+    pool_id                 TEXT NOT NULL,
+    block_number            BIGINT NOT NULL,
+    token0                  TEXT,
+    token1                  TEXT,
+    hook_address            TEXT,
+    swap_count              NUMERIC,
+    modify_liquidity_count  NUMERIC,
+    volume_token0_abs       NUMERIC,
+    volume_token1_abs       NUMERIC
+);
+CREATE INDEX IF NOT EXISTS pool_totals_pool_block_idx ON pool_totals (pool_id, block_number DESC);
+
+CREATE TABLE IF NOT EXISTS hook_totals (
+    id                      TEXT PRIMARY KEY,
+    hook_address            TEXT NOT NULL,
+    block_number            BIGINT NOT NULL,
+    pool_count              NUMERIC,
+    swap_count              NUMERIC,
+    modify_liquidity_count  NUMERIC,
+    volume_token0_abs       NUMERIC,
+    volume_token1_abs       NUMERIC
+);
+CREATE INDEX IF NOT EXISTS hook_totals_hook_block_idx ON hook_totals (hook_address, block_number DESC);

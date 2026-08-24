@@ -300,6 +300,12 @@ where
                 modify_liquidity_count: acc.modify_count,
                 hook,
                 last_block: block,
+                // Decimal-adjusted volumes, set only when BOTH tokens have a
+                // measured decimals(); an unmeasured decimals defaults to 18 and a
+                // silently-wrong human-readable volume is worse than none.
+                volume_token0_adjusted: String::new(),
+                volume_token1_adjusted: String::new(),
+                volumes_adjusted: false,
             }
         })
         .collect();
