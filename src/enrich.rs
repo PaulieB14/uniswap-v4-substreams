@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use substreams::errors::Error;
 use substreams::log;
 use substreams::scalar::BigInt;
-use substreams::store::{StoreGet, StoreGetProto};
+use substreams::store::{StoreGetString, StoreGet, StoreGetProto};
 
 use crate::pb::uniswap::v4::v1 as pb;
 // The key builder is imported from the WRITER rather than re-implemented here.
@@ -138,9 +138,10 @@ impl HookAcc {
 /// Split out from the `#[handlers::map]` entry point so the logic is testable:
 /// `StoreGetProto` is a thin wrapper over host imports and cannot be
 /// constructed off-WASM, but a closure over a `BTreeMap` can.
-pub fn enrich<F>(events: pb::Events, resolve: F) -> pb::Events
+pub fn enrich<F, G>(events: pb::Events, resolve: F, resolve_token: G) -> pb::Events
 where
     F: Fn(&str) -> Option<pb::Pool>,
+    G: Fn(&str) -> Option<String>,
 {
     let mut out = events;
     let block = block_number(&out);
@@ -184,6 +185,12 @@ where
             s.fee_tier = p.fee_tier;
             s.tick_spacing = p.tick_spacing;
             s.hook = p.hook.clone();
+            let (s0, s1, d0, d1, meas) = attach_tokens(&resolve_token, &s.token0, &s.token1);
+            s.token0_symbol = s0;
+            s.token1_symbol = s1;
+            s.token0_decimals = d0;
+            s.token1_decimals = d1;
+            s.decimals_measured = meas;
         }
         // else: left at proto3 defaults. Deliberately NOT invented — a
         // plausible-looking zero address for token0 would be indistinguishable
@@ -196,6 +203,12 @@ where
             m.fee_tier = p.fee_tier;
             m.tick_spacing = p.tick_spacing;
             m.hook = p.hook.clone();
+            let (s0, s1, d0, d1, meas) = attach_tokens(&resolve_token, &m.token0, &m.token1);
+            m.token0_symbol = s0;
+            m.token1_symbol = s1;
+            m.token0_decimals = d0;
+            m.token1_decimals = d1;
+            m.decimals_measured = meas;
         }
     }
 
@@ -323,15 +336,52 @@ where
 ///
 /// Manifest input order must match this signature exactly — `map: map_events`
 /// then `store: store_pools` with `mode: get`.
+
+/// Join token metadata onto a row that already knows its token addresses.
+///
+/// A miss is left empty, never guessed. `store_tokens` only records a token the
+/// first time a pool mentions it, so a stream that starts after a token's first
+/// pool will legitimately have no entry — and an invented symbol is worse than a
+/// blank one, because it looks authoritative.
+fn attach_tokens<G: Fn(&str) -> Option<String>>(
+    lookup: &G,
+    t0: &str,
+    t1: &str,
+) -> (String, String, u32, u32, bool) {
+    let get = |a: &str| {
+        if a.is_empty() {
+            return None;
+        }
+        lookup(&a.to_ascii_lowercase()).and_then(|v| crate::tokens::decode_token_value(a, &v))
+    };
+    let (m0, m1) = (get(t0), get(t1));
+    // decimals_measured is AND, not OR: the flag guards arithmetic that uses
+    // both sides, so one unmeasured token makes the pair untrustworthy.
+    let measured = matches!((&m0, &m1), (Some((_, r0)), Some((_, r1)))
+        if r0.decimals_measured && r1.decimals_measured);
+    (
+        m0.as_ref().map(|(m, _)| m.symbol.clone()).unwrap_or_default(),
+        m1.as_ref().map(|(m, _)| m.symbol.clone()).unwrap_or_default(),
+        m0.as_ref().map(|(m, _)| m.decimals as u32).unwrap_or(0),
+        m1.as_ref().map(|(m, _)| m.decimals as u32).unwrap_or(0),
+        measured,
+    )
+}
+
 #[substreams::handlers::map]
 pub fn map_enriched(
     events: pb::Events,
     store: StoreGetProto<pb::Pool>,
+    tokens: StoreGetString,
 ) -> Result<pb::Events, Error> {
     // `get_last`, not `get_first`/`get_at` — see the doc comment on `enrich`
     // for why that is what makes a same-block `Initialize` resolve, and why it
     // is safe only for PoolKey-immutable fields.
-    Ok(enrich(events, |pool_id| store.get_last(pool_key(pool_id))))
+    Ok(enrich(
+        events,
+        |pool_id| store.get_last(pool_key(pool_id)),
+        |addr| tokens.get_last(format!("token:{}", addr)),
+    ))
 }
 
 /// Magnitude of a signed decimal-integer string.
@@ -472,6 +522,7 @@ mod tests {
         let out = enrich(
             events,
             resolver(vec![pool(POOL_A, "0xt0", "0xt1", 3000, HOOK_1)]),
+            |_| None,
         );
 
         let s = &out.swaps[0];
@@ -493,7 +544,7 @@ mod tests {
             swaps: vec![swap(POOL_UNKNOWN, "-100", "250", 3000)],
             ..Default::default()
         };
-        let out = enrich(events, resolver(vec![]));
+        let out = enrich(events, resolver(vec![]), |_| None);
 
         // The row survives — the subgraph would have dropped it.
         assert_eq!(out.swaps.len(), 1);
@@ -528,6 +579,7 @@ mod tests {
         let out = enrich(
             events,
             resolver(vec![pool(POOL_A, "0xt0", "0xt1", 3000, HOOK_1)]),
+            |_| None,
         );
 
         assert_eq!(out.pool_stats[0].volume_token0_abs, "200");
@@ -546,6 +598,7 @@ mod tests {
         let out = enrich(
             events,
             resolver(vec![pool(POOL_A, "0xt0", "0xt1", 3000, HOOK_1)]),
+            |_| None,
         );
         assert_eq!(out.pool_stats[0].volume_token0_abs, big);
     }
@@ -569,6 +622,7 @@ mod tests {
                 pool(POOL_A, "0xt0", "0xt1", 8_388_608, HOOK_1), // dynamic-fee sentinel
                 pool(POOL_B, "0xt0", "0xt1", 3000, HOOK_2),
             ]),
+            |_| None,
         );
 
         let h1 = out
@@ -604,6 +658,7 @@ mod tests {
                 pool(POOL_A, "0xt0", "0xt1", 500, HOOK_1),
                 pool(POOL_B, "0xt2", "0xt3", 500, HOOK_1),
             ]),
+            |_| None,
         );
 
         assert_eq!(out.hook_stats.len(), 1);
@@ -634,6 +689,7 @@ mod tests {
                 pool(POOL_A, "0xt0", "0xt1", 500, zero),
                 pool(POOL_B, "0xt0", "0xt1", 3000, zero),
             ]),
+            |_| None,
         );
 
         // Both pools are still fully enriched and counted...
@@ -652,6 +708,7 @@ mod tests {
         let out = enrich(
             events,
             resolver(vec![pool(POOL_A, "0xt0", "0xt1", 3000, HOOK_1)]),
+            |_| None,
         );
 
         assert_eq!(out.pool_stats.len(), 1);
@@ -667,7 +724,7 @@ mod tests {
 
     #[test]
     fn empty_block_emits_nothing() {
-        let out = enrich(pb::Events::default(), resolver(vec![]));
+        let out = enrich(pb::Events::default(), resolver(vec![]), |_| None);
         assert!(out.pool_stats.is_empty());
         assert!(out.hook_stats.is_empty());
     }
@@ -686,6 +743,7 @@ mod tests {
         let out = enrich(
             events,
             resolver(vec![pool(POOL_A, "0xt0", "0xt1", 3000, HOOK_1)]),
+            |_| None,
         );
 
         assert_eq!(out.pools.len(), 1);
@@ -708,6 +766,7 @@ mod tests {
                 pool(POOL_A, "0xt0", "0xt1", 500, HOOK_2),
                 pool(POOL_B, "0xt0", "0xt1", 500, HOOK_1),
             ]),
+            |_| None,
         );
 
         let ids: Vec<&str> = out.pool_stats.iter().map(|p| p.pool_id.as_str()).collect();
@@ -736,6 +795,7 @@ mod tests {
         let out = enrich(
             events,
             resolver(vec![pool(POOL_A, "0xt0", "0xt1", 500, HOOK_1)]),
+            |_| None,
         );
         assert_eq!(out.pool_stats[0].volume_token0_abs, "0");
         assert_eq!(out.pool_stats[0].volume_token1_abs, "0");

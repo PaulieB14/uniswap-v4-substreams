@@ -137,6 +137,14 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 liquidity: "0".to_string(),
                 is_dynamic_fee: hooks::is_dynamic_fee(fee),
                 meta: Some(meta),
+                // Filled later by map_enriched from store_tokens. Empty here on
+                // purpose: at Initialize the token contracts have not been read
+                // yet, and a placeholder symbol would outlive the gap.
+                token0_symbol: String::new(),
+                token1_symbol: String::new(),
+                token0_decimals: 0,
+                token1_decimals: 0,
+                decimals_measured: false,
             });
         }
         // Donate / ERC-6909 Transfer, Approval, OperatorSet / ProtocolFeeUpdated

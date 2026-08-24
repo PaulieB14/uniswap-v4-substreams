@@ -96,6 +96,8 @@ modules:
       - map: map_events
       - store: store_pools
         mode: get
+      - store: store_tokens
+        mode: get
     output:
       type: proto:uniswap.v4.v1.Events
 

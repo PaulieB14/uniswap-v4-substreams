@@ -54,6 +54,16 @@ message Pool {
   // consumer know the sentinel.
   bool   is_dynamic_fee = 10;
   Meta   meta           = 11;
+  // Token metadata, joined from store_tokens. Present only once the token has
+  // been seen at a pool initialisation; empty otherwise rather than guessed.
+  // `decimals_measured` is the honesty flag: an unreadable decimals() falls back
+  // to 18, and money maths must not trust that silently.
+  string token0_symbol   = 12;
+  string token1_symbol   = 13;
+  uint32 token0_decimals = 14;
+  uint32 token1_decimals = 15;
+  bool   decimals_measured = 16;
+
 }
 
 message Swap {
@@ -92,6 +102,16 @@ message Swap {
   uint64 fee_tier     = 13;
   int32  tick_spacing = 14;
   HookPermissions hook = 15;
+  // Token metadata, joined from store_tokens. Present only once the token has
+  // been seen at a pool initialisation; empty otherwise rather than guessed.
+  // `decimals_measured` is the honesty flag: an unreadable decimals() falls back
+  // to 18, and money maths must not trust that silently.
+  string token0_symbol   = 16;
+  string token1_symbol   = 17;
+  uint32 token0_decimals = 18;
+  uint32 token1_decimals = 19;
+  bool   decimals_measured = 20;
+
 }
 
 message ModifyLiquidity {
@@ -113,6 +133,16 @@ message ModifyLiquidity {
   uint64 fee_tier    = 11;
   int32  tick_spacing = 12;
   HookPermissions hook = 13;
+  // Token metadata, joined from store_tokens. Present only once the token has
+  // been seen at a pool initialisation; empty otherwise rather than guessed.
+  // `decimals_measured` is the honesty flag: an unreadable decimals() falls back
+  // to 18, and money maths must not trust that silently.
+  string token0_symbol   = 14;
+  string token1_symbol   = 15;
+  uint32 token0_decimals = 16;
+  uint32 token1_decimals = 17;
+  bool   decimals_measured = 18;
+
 }
 
 message PositionEvent {
