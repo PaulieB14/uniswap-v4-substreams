@@ -527,12 +527,18 @@ pub fn map_totals(
 /// happened so a consumer can filter instead of guessing why a zero is a zero.
 fn attach_usd(events: &mut pb::Events, prices: &StoreGetString) {
     use substreams::store::StoreGet;
-    let native_usd = prices
-        .get_last(crate::pricing::NATIVE_USD_KEY)
-        .and_then(|v| crate::pricing::decode_price_value(&v))
-        .map(|r| r.price);
-
     for s in events.swaps.iter_mut() {
+        // PRE-SWAP price, per the proto contract: a trade is valued at the price
+        // it hit, not the price it created. get_at(ordinal) returns the value
+        // standing immediately before this log; get_last would return the state
+        // after every write in the block, so a swap that moves the anchor would
+        // be valued at the price it just produced. The subgraph does the same
+        // thing by updating bundle.ethPriceUSD only after computing amountUSD.
+        let ord = s.meta.as_ref().map(|m| m.log_index as u64).unwrap_or(0);
+        let native_usd = prices
+            .get_at(ord, crate::pricing::NATIVE_USD_KEY)
+            .and_then(|v| crate::pricing::decode_price_value(&v))
+            .map(|r| r.price);
         let (d0, d1) = match (
             crate::pricing::effective_decimals(&s.token0, s.token0_decimals, s.decimals_measured),
             crate::pricing::effective_decimals(&s.token1, s.token1_decimals, s.decimals_measured),
@@ -550,7 +556,7 @@ fn attach_usd(events: &mut pb::Events, prices: &StoreGetString) {
         };
         let dn = |t: &str| {
             prices
-                .get_last(crate::pricing::derived_native_key(t))
+                .get_at(ord, crate::pricing::derived_native_key(t))
                 .and_then(|v| crate::pricing::decode_price_value(&v))
                 .map(|r| r.price)
         };

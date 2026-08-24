@@ -1859,3 +1859,59 @@ mod anchor_verified_tests {
 pub fn negate(v: &BigDecimal) -> BigDecimal {
     v.clone() * BigDecimal::from(-1)
 }
+
+#[cfg(test)]
+mod native_path_tests {
+    use super::*;
+
+    /// The native pricing path could only ever be exercised ONCE against live
+    /// data, and not for want of trying: the WETH/USDC anchor's Initialize is at
+    /// block 25384712 and its first swap is 16,955 blocks later, while the tier
+    /// allows 10,000 processed blocks per request including store warm-up. No
+    /// single request can both warm the anchor into store_pools and watch it
+    /// trade. These fixtures are that one verified row, so the branch keeps
+    /// regression coverage without needing a higher tier.
+    ///
+    /// Row: 0xacffee88…5bd5f5-104, block 25401667, WETH(18)/USDC(6).
+    const ANCHOR_SQRT: &str = "4503192982413656495899522";
+
+    #[test]
+    fn native_price_derives_from_the_anchor_sqrt_price() {
+        let sqrt: BigInt = ANCHOR_SQRT.parse().unwrap();
+        // WETH is token0 (18), USDC token1 (6); USD per native is token1/token0.
+        let (_p0, p1) = sqrt_price_x96_to_token_prices(&sqrt, 18, 6);
+        assert!(
+            p1.to_string().starts_with("3230.5907872322217618"),
+            "native price was {p1}"
+        );
+    }
+
+    #[test]
+    fn native_leg_multiplies_through_to_usd() {
+        let native: BigDecimal = "3230.590787232221761897279559059531".parse().unwrap();
+        let adjusted: BigDecimal = "0.000106502155157829".parse().unwrap();
+        let usd = usd_for_leg(WRAPPED_NATIVE, &adjusted, Some(&native), None)
+            .expect("a native leg must price");
+        assert!(
+            usd.to_string().starts_with("0.34406488127325901643"),
+            "native leg usd was {usd}"
+        );
+    }
+
+    /// The two-leg averaging branch. Also n=1 live, for the same structural
+    /// reason: 0 of 2,619 priced rows in one test window and 0 of 749 in another
+    /// had BOTH legs anchored, because everything else priced through the
+    /// stablecoin shortcut where only one leg is USD by definition.
+    #[test]
+    fn both_legs_anchored_averages_the_magnitudes() {
+        let leg0: BigDecimal = "0.344064881273259016438031490135775560316111718199".parse().unwrap();
+        let leg1: BigDecimal = "-0.347553".parse().unwrap();
+        let t = tracked_amount_usd(Some(&abs_bd(&leg0)), Some(&abs_bd(&leg1)))
+            .expect("two anchored legs must produce a tracked notional");
+        assert!(
+            t.to_string().starts_with("0.34580894063662950821"),
+            "tracked notional was {t}"
+        );
+        assert!(t > BigDecimal::zero(), "a tracked notional is a size, never signed");
+    }
+}

@@ -322,7 +322,12 @@ CREATE TABLE IF NOT EXISTS modify_liquidity
     gas_used        BIGINT,
     gas_price       NUMERIC(78,0),
 
-    CONSTRAINT modify_liquidity_pk PRIMARY KEY (id)
+    CONSTRAINT modify_liquidity_pk PRIMARY KEY (id),
+    token0_symbol           TEXT,
+    token1_symbol           TEXT,
+    token0_decimals         INTEGER,
+    token1_decimals         INTEGER,
+    decimals_measured       BOOLEAN
 );
 
 CREATE INDEX IF NOT EXISTS ml_pool_block_idx  ON modify_liquidity (pool_id, block_number DESC, log_index DESC);

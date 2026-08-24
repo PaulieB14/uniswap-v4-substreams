@@ -211,6 +211,13 @@ fn push_pool_state_update(changes: &mut DatabaseChanges, swap: &pb::Swap, ordina
     let empty = pb::Meta::default();
     let meta = swap.meta.as_ref().unwrap_or(&empty);
 
+    // Only update a pool we actually know. An unresolved swap (cold store, or a
+    // pool created before this window) has no `pool` row to update, and the
+    // UPDATE is discarded as a 0-row no-op — measured at 51,231 of 51,994 on a
+    // cold-start range. Correct outcome, but silent and 98.5% wasted writes.
+    if swap.token0.is_empty() {
+        return;
+    }
     let tc = changes.push_change("pool", &swap.pool_id, ordinal, Operation::Update);
     tc.change("sqrt_price", ("0", numeric(&swap.sqrt_price_x96)));
     tc.change("tick", (0i32, swap.tick));
@@ -287,6 +294,13 @@ fn push_modify_liquidity(changes: &mut DatabaseChanges, ml: &pb::ModifyLiquidity
     tc.change("token1", ("", ml.token1.as_str()));
     tc.change("fee_tier", (0u64, ml.fee_tier));
     tc.change("tick_spacing", (0i32, ml.tick_spacing));
+    // Symbols here too. This table is 5.7x the size of `swap`, and without them
+    // it was the least self-describing surface in the package.
+    tc.change("token0_symbol", ("", ml.token0_symbol.as_str()));
+    tc.change("token1_symbol", ("", ml.token1_symbol.as_str()));
+    tc.change("token0_decimals", (0u32, ml.token0_decimals));
+    tc.change("token1_decimals", (0u32, ml.token1_decimals));
+    tc.change("decimals_measured", (false, ml.decimals_measured));
     set_hook_identity(tc, ml.hook.as_ref());
     set_meta(tc, ml.meta.as_ref());
 }
