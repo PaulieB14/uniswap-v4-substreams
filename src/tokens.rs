@@ -623,7 +623,7 @@ pub fn store_tokens(events: pb::Events, store: StoreSetString) {
     let mut ords: HashMap<String, u64> = HashMap::new();
 
     for pool in &events.pools {
-        let ord = pool.meta.as_ref().map(|m| m.log_index as u64).unwrap_or(0);
+        let ord = pool.meta.as_option().map(|m| m.log_index as u64).unwrap_or(0);
         for hex_str in [&pool.token0, &pool.token1] {
             let key = hex_str.to_ascii_lowercase();
             ords.entry(key).and_modify(|o| *o = (*o).min(ord)).or_insert(ord);

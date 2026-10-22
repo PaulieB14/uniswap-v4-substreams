@@ -106,7 +106,7 @@ pub fn db_out(events: pb::Events) -> Result<DatabaseChanges, Error> {
     // collecting only from swaps would leave a freshly created pair's tokens
     // absent from the token table indefinitely.
     for p in &events.pools {
-        let blk = p.meta.as_ref().map(|m| m.block_number).unwrap_or(0);
+        let blk = p.meta.as_option().map(|m| m.block_number).unwrap_or(0);
         for (addr, sym, dec) in [
             (p.token0.as_str(), p.token0_symbol.as_str(), p.token0_decimals),
             (p.token1.as_str(), p.token1_symbol.as_str(), p.token1_decimals),
@@ -118,7 +118,7 @@ pub fn db_out(events: pb::Events) -> Result<DatabaseChanges, Error> {
         }
     }
     for sw in &events.swaps {
-        let blk = sw.meta.as_ref().map(|m| m.block_number).unwrap_or(0);
+        let blk = sw.meta.as_option().map(|m| m.block_number).unwrap_or(0);
         for (addr, sym, dec) in [
             (sw.token0.as_str(), sw.token0_symbol.as_str(), sw.token0_decimals),
             (sw.token1.as_str(), sw.token1_symbol.as_str(), sw.token1_decimals),
@@ -158,9 +158,9 @@ fn push_pool_create(changes: &mut DatabaseChanges, pool: &pb::Pool, idx: usize) 
         // aborting the whole stream on a primary-key violation.
         return;
     }
-    let ordinal = ordinal_of(pool.meta.as_ref(), idx);
+    let ordinal = ordinal_of(pool.meta.as_option(), idx);
     let empty = pb::Meta::default();
-    let meta = pool.meta.as_ref().unwrap_or(&empty);
+    let meta = pool.meta.as_option().unwrap_or(&empty);
 
     let tc = changes.push_change("pool", &pool.id, ordinal, Operation::Create);
     tc.change("token0", ("", pool.token0.as_str()));
@@ -186,7 +186,7 @@ fn push_pool_create(changes: &mut DatabaseChanges, pool: &pb::Pool, idx: usize) 
     tc.change("created_at_timestamp", (0u64, meta.block_timestamp));
     tc.change("created_at_tx", ("", meta.tx_hash.as_str()));
 
-    let hook = pool.hook.as_ref();
+    let hook = pool.hook.as_option();
     tc.change(
         "hook_address",
         ("", hook.map(|h| h.address.as_str()).unwrap_or("")),
@@ -209,7 +209,7 @@ fn push_pool_state_update(changes: &mut DatabaseChanges, swap: &pb::Swap, ordina
         return;
     }
     let empty = pb::Meta::default();
-    let meta = swap.meta.as_ref().unwrap_or(&empty);
+    let meta = swap.meta.as_option().unwrap_or(&empty);
 
     // Only update a pool we actually know. An unresolved swap (cold store, or a
     // pool created before this window) has no `pool` row to update, and the
@@ -234,7 +234,7 @@ fn push_swap(changes: &mut DatabaseChanges, swap: &pb::Swap, idx: usize) {
     if swap.id.is_empty() {
         return;
     }
-    let ordinal = ordinal_of(swap.meta.as_ref(), idx);
+    let ordinal = ordinal_of(swap.meta.as_option(), idx);
     {
         let tc = changes.push_change("swap", &swap.id, ordinal, Operation::Create);
         tc.change("pool_id", ("", swap.pool_id.as_str()));
@@ -272,8 +272,8 @@ fn push_swap(changes: &mut DatabaseChanges, swap: &pb::Swap, idx: usize) {
         tc.change("priced", (false, swap.priced));
         tc.change("amount0_priced", (false, swap.amount0_priced));
         tc.change("amount1_priced", (false, swap.amount1_priced));
-        set_hook_identity(tc, swap.hook.as_ref());
-        set_meta(tc, swap.meta.as_ref());
+        set_hook_identity(tc, swap.hook.as_option());
+        set_meta(tc, swap.meta.as_option());
     }
     push_pool_state_update(changes, swap, ordinal);
 }
@@ -282,7 +282,7 @@ fn push_modify_liquidity(changes: &mut DatabaseChanges, ml: &pb::ModifyLiquidity
     if ml.id.is_empty() {
         return;
     }
-    let ordinal = ordinal_of(ml.meta.as_ref(), idx);
+    let ordinal = ordinal_of(ml.meta.as_option(), idx);
     let tc = changes.push_change("modify_liquidity", &ml.id, ordinal, Operation::Create);
     tc.change("pool_id", ("", ml.pool_id.as_str()));
     tc.change("sender", ("", ml.sender.as_str()));
@@ -301,15 +301,15 @@ fn push_modify_liquidity(changes: &mut DatabaseChanges, ml: &pb::ModifyLiquidity
     tc.change("token0_decimals", (0u32, ml.token0_decimals));
     tc.change("token1_decimals", (0u32, ml.token1_decimals));
     tc.change("decimals_measured", (false, ml.decimals_measured));
-    set_hook_identity(tc, ml.hook.as_ref());
-    set_meta(tc, ml.meta.as_ref());
+    set_hook_identity(tc, ml.hook.as_option());
+    set_meta(tc, ml.meta.as_option());
 }
 
 fn push_position_event(changes: &mut DatabaseChanges, pe: &pb::PositionEvent, idx: usize) {
     if pe.id.is_empty() {
         return;
     }
-    let ordinal = ordinal_of(pe.meta.as_ref(), idx);
+    let ordinal = ordinal_of(pe.meta.as_option(), idx);
     {
         let tc = changes.push_change("position_event", &pe.id, ordinal, Operation::Create);
         // token_id lands in a NUMERIC(78,0) column, so the mapper must emit the
@@ -321,7 +321,7 @@ fn push_position_event(changes: &mut DatabaseChanges, pe: &pb::PositionEvent, id
         // `from`/`to` are SQL reserved words, hence the _address suffix.
         tc.change("from_address", ("", pe.from.as_str()));
         tc.change("to_address", ("", pe.to.as_str()));
-        set_meta(tc, pe.meta.as_ref());
+        set_meta(tc, pe.meta.as_option());
     }
     push_position_state(changes, pe, ordinal);
 }
@@ -341,7 +341,7 @@ fn push_position_state(changes: &mut DatabaseChanges, pe: &pb::PositionEvent, or
         return;
     }
     let empty = pb::Meta::default();
-    let meta = pe.meta.as_ref().unwrap_or(&empty);
+    let meta = pe.meta.as_option().unwrap_or(&empty);
 
     let is_mint = is_zero_address(&pe.from);
     let op = if is_mint {
@@ -364,14 +364,14 @@ fn push_hook_deployment(changes: &mut DatabaseChanges, hd: &pb::HookDeployment, 
     if hd.id.is_empty() {
         return;
     }
-    let ordinal = ordinal_of(hd.meta.as_ref(), idx);
+    let ordinal = ordinal_of(hd.meta.as_option(), idx);
     let tc = changes.push_change("hook_deployment", &hd.id, ordinal, Operation::Create);
     tc.change("hook_address", ("", hd.hook.as_str()));
     tc.change("module", ("", hd.module.as_str()));
     tc.change("salt", ("", hd.salt.as_str()));
     tc.change("factory", ("", hd.factory.as_str()));
-    set_hook_permissions(tc, hd.permissions.as_ref());
-    set_meta(tc, hd.meta.as_ref());
+    set_hook_permissions(tc, hd.permissions.as_option());
+    set_meta(tc, hd.meta.as_option());
 }
 
 // ---------------------------------------------------------------------------
@@ -407,7 +407,7 @@ fn push_pool_stats(changes: &mut DatabaseChanges, ps: &pb::PoolStats, idx: usize
     tc.change("modify_liquidity_count", (0u64, ps.modify_liquidity_count));
     tc.change("volume_token0_abs", ("0", numeric(&ps.volume_token0_abs)));
     tc.change("volume_token1_abs", ("0", numeric(&ps.volume_token1_abs)));
-    set_hook_identity(tc, ps.hook.as_ref());
+    set_hook_identity(tc, ps.hook.as_option());
 }
 
 /// One row per (hook, block) touched — the roll-up the source subgraph cannot
@@ -433,7 +433,7 @@ fn push_hook_stats(changes: &mut DatabaseChanges, hs: &pb::HookStats, idx: usize
     // The full 14 booleans here, unlike on `swap`: hook_stats is a small table
     // (one row per active hook per block) and it is the natural place to filter
     // hooks BY capability, so the join to `pool` is worth eliminating.
-    set_hook_permissions(tc, hs.permissions.as_ref());
+    set_hook_permissions(tc, hs.permissions.as_option());
 }
 
 // ---------------------------------------------------------------------------
@@ -449,13 +449,13 @@ fn push_donate(changes: &mut DatabaseChanges, d: &pb::Donate, idx: usize) {
     if d.id.is_empty() {
         return;
     }
-    let ordinal = ordinal_of(d.meta.as_ref(), idx);
+    let ordinal = ordinal_of(d.meta.as_option(), idx);
     let tc = changes.push_change("donate", &d.id, ordinal, Operation::Create);
     tc.change("pool_id", ("", d.pool_id.as_str()));
     tc.change("sender", ("", d.sender.as_str()));
     tc.change("amount0", ("0", numeric(&d.amount0)));
     tc.change("amount1", ("0", numeric(&d.amount1)));
-    set_meta(tc, d.meta.as_ref());
+    set_meta(tc, d.meta.as_option());
     // Deliberately no pool-state UPDATE. A donation carries no authoritative
     // post-event sqrtPrice/tick/liquidity — unlike a Swap, which is why only
     // Swap refreshes the pool row.
@@ -465,7 +465,7 @@ fn push_claim_token_event(changes: &mut DatabaseChanges, ct: &pb::ClaimTokenEven
     if ct.id.is_empty() {
         return;
     }
-    let ordinal = ordinal_of(ct.meta.as_ref(), idx);
+    let ordinal = ordinal_of(ct.meta.as_option(), idx);
     let tc = changes.push_change("claim_token_event", &ct.id, ordinal, Operation::Create);
     tc.change("kind", ("", ct.kind.as_str()));
     tc.change("caller", ("", ct.caller.as_str()));
@@ -482,14 +482,14 @@ fn push_claim_token_event(changes: &mut DatabaseChanges, ct: &pb::ClaimTokenEven
     tc.change("currency_id", ("0", numeric(&ct.currency_id)));
     tc.change("amount", ("0", numeric(&ct.amount)));
     tc.change("approved", (false, ct.approved));
-    set_meta(tc, ct.meta.as_ref());
+    set_meta(tc, ct.meta.as_option());
 }
 
 fn push_protocol_fee_event(changes: &mut DatabaseChanges, pf: &pb::ProtocolFeeEvent, idx: usize) {
     if pf.id.is_empty() {
         return;
     }
-    let ordinal = ordinal_of(pf.meta.as_ref(), idx);
+    let ordinal = ordinal_of(pf.meta.as_option(), idx);
     let tc = changes.push_change("protocol_fee_event", &pf.id, ordinal, Operation::Create);
     tc.change("kind", ("", pf.kind.as_str()));
     // Empty for kind='controller_updated' — a controller change is global, not
@@ -499,7 +499,7 @@ fn push_protocol_fee_event(changes: &mut DatabaseChanges, pf: &pb::ProtocolFeeEv
     // split is a v4-core encoding detail; the raw value is always recoverable.
     tc.change("protocol_fee", (0u32, pf.protocol_fee));
     tc.change("controller", ("", pf.controller.as_str()));
-    set_meta(tc, pf.meta.as_ref());
+    set_meta(tc, pf.meta.as_option());
 }
 
 // ---------------------------------------------------------------------------
@@ -641,7 +641,7 @@ fn push_pool_totals(changes: &mut DatabaseChanges, pt: &pb::PoolTotals, idx: usi
     tc.change("token1", ("", pt.token1.as_str()));
     tc.change(
         "hook_address",
-        ("", pt.hook.as_ref().map(|h| h.address.as_str()).unwrap_or("")),
+        ("", pt.hook.as_option().map(|h| h.address.as_str()).unwrap_or("")),
     );
     tc.change("swap_count", ("0", numeric(&pt.swap_count)));
     tc.change("modify_liquidity_count", ("0", numeric(&pt.modify_liquidity_count)));

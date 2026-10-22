@@ -1,10 +1,12 @@
 specVersion: v0.1.0
 package:
   name: uniswap_v4_base
-  version: v0.1.4
+  version: v0.2.0
   url: https://github.com/PaulieB14/uniswap-v4-substreams
   image: ./icon.png
-  description: >
+  description: |
+    Uniswap v4 DEX on Base: swaps, pools, liquidity, volume.
+
     Uniswap V4 on Base, converted from the uniswap-v4-base-3 subgraph
     (Qmbsc6XQWbiv4DfLVfaNciScqYLyDWUYjWzrFBbzzmRsMB). Adds hook permission
     decoding from the low 14 bits of the hook address, the per-swap effective
@@ -19,8 +21,7 @@ package:
 network: base
 
 imports:
-  database: https://github.com/streamingfast/substreams-sink-database-changes/releases/download/v4.0.0/substreams-sink-database-changes-v4.0.0.spkg
-  sql: https://github.com/streamingfast/substreams-sink-sql/releases/download/protodefs-v1.0.7/substreams-sink-sql-protodefs-v1.0.7.spkg
+  database: https://github.com/streamingfast/substreams-sink-database-changes/releases/download/v5.0.0/substreams-sink-database-changes-v5.0.0.spkg
   # Block-level skip (eth_common:filtered_events) deliberately NOT used.
   # Measured, not assumed: 148 of 148 sampled Base blocks contain V4 activity —
   # 100%. A block-index filter is a cost win only for SPARSE targets; here it

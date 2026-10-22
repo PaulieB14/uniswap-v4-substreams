@@ -125,8 +125,8 @@ pub fn meta(blk: &Block, trx: &TransactionTrace, log: &Log) -> pb::Meta {
         // abort the whole stream, so degrade to 0 instead.
         block_timestamp: blk
             .header
-            .as_ref()
-            .and_then(|h| h.timestamp.as_ref())
+            .as_option()
+            .and_then(|h| h.timestamp.as_option())
             .map(|t| t.seconds as u64)
             .unwrap_or(0),
         tx_hash: addr_hex(&trx.hash),
@@ -141,7 +141,7 @@ pub fn meta(blk: &Block, trx: &TransactionTrace, log: &Log) -> pb::Meta {
         gas_used: trx.gas_used,
         gas_price: trx
             .gas_price
-            .as_ref()
+            .as_option()
             .map(|v| substreams::scalar::BigInt::from_unsigned_bytes_be(&v.bytes).to_string())
             .unwrap_or_else(|| "0".to_string()),
     }

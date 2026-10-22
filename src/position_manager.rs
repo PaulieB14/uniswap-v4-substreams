@@ -53,7 +53,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // keeps one flat table instead of three near-empty ones.
                 from: String::new(),
                 to: String::new(),
-                meta: Some(meta(blk, tx, log_index)),
+                meta: Some(meta(blk, tx, log_index)).into(),
             });
         } else if let Some(ev) =
             abi::position_manager::events::Unsubscription::match_and_decode(log)
@@ -65,7 +65,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 address: addr(&ev.subscriber),
                 from: String::new(),
                 to: String::new(),
-                meta: Some(meta(blk, tx, log_index)),
+                meta: Some(meta(blk, tx, log_index)).into(),
             });
         } else if let Some(ev) = abi::position_manager::events::Transfer::match_and_decode(log) {
             events.position_events.push(pb::PositionEvent {
@@ -78,7 +78,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 address: addr(&ev.to),
                 from: addr(&ev.from),
                 to: addr(&ev.to),
-                meta: Some(meta(blk, tx, log_index)),
+                meta: Some(meta(blk, tx, log_index)).into(),
             });
         }
     }
@@ -111,7 +111,7 @@ fn meta(
         gas_used: tx.gas_used,
         gas_price: tx
             .gas_price
-            .as_ref()
+            .as_option()
             .map(|v| Into::<substreams::scalar::BigInt>::into(v).to_string())
             // Pre-London / synthetic txs can omit gasPrice; "0" beats a NULL
             // that every downstream aggregate would have to guard.

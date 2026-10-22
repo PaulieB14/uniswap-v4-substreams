@@ -241,7 +241,7 @@ where
             }
         };
 
-        let perms = match pool.hook.as_ref() {
+        let perms = match pool.hook.as_option() {
             Some(h) if h.has_hook => h,
             // Hookless pools are excluded rather than bucketed under the zero
             // address. A "0x000…0" HookStats row would be a chain-wide
@@ -300,7 +300,7 @@ where
             // which is a worse failure than an obviously-empty token0.
             let (token0, token1, hook) = match acc.pool {
                 Some(p) => (p.token0, p.token1, p.hook),
-                None => (String::new(), String::new(), None),
+                None => (String::new(), String::new(), Default::default()),
             };
             pb::PoolStats {
                 pool_id,
@@ -326,7 +326,7 @@ where
         .into_iter()
         .map(|(hook_address, acc)| pb::HookStats {
             hook_address,
-            permissions: Some(acc.permissions),
+            permissions: Some(acc.permissions).into(),
             pool_count: acc.pools.len() as u64,
             swap_count: acc.swap_count,
             volume_token0_abs: acc.vol0.to_string(),
@@ -435,20 +435,20 @@ fn block_number(events: &pb::Events) -> u64 {
     events
         .swaps
         .first()
-        .and_then(|s| s.meta.as_ref())
+        .and_then(|s| s.meta.as_option())
         .or_else(|| {
             events
                 .modify_liquidity
                 .first()
-                .and_then(|m| m.meta.as_ref())
+                .and_then(|m| m.meta.as_option())
         })
-        .or_else(|| events.pools.first().and_then(|p| p.meta.as_ref()))
-        .or_else(|| events.position_events.first().and_then(|p| p.meta.as_ref()))
+        .or_else(|| events.pools.first().and_then(|p| p.meta.as_option()))
+        .or_else(|| events.position_events.first().and_then(|p| p.meta.as_option()))
         .or_else(|| {
             events
                 .hook_deployments
                 .first()
-                .and_then(|h| h.meta.as_ref())
+                .and_then(|h| h.meta.as_option())
         })
         .map(|m| m.block_number)
         .unwrap_or(0)
@@ -491,7 +491,7 @@ mod tests {
             hook: Some(perms(
                 hook,
                 hook != "0x0000000000000000000000000000000000000000",
-            )),
+            )).into(),
             ..Default::default()
         }
     }
@@ -502,7 +502,7 @@ mod tests {
             amount0: a0.to_string(),
             amount1: a1.to_string(),
             fee,
-            meta: Some(meta(35_000_000, 0)),
+            meta: Some(meta(35_000_000, 0)).into(),
             ..Default::default()
         }
     }
@@ -511,7 +511,7 @@ mod tests {
         pb::ModifyLiquidity {
             pool_id: pool_id.to_string(),
             liquidity_delta: delta.to_string(),
-            meta: Some(meta(35_000_000, 1)),
+            meta: Some(meta(35_000_000, 1)).into(),
             ..Default::default()
         }
     }
@@ -548,12 +548,12 @@ mod tests {
         assert_eq!(s.token1, "0xt1");
         assert_eq!(s.fee_tier, 3000);
         assert_eq!(s.tick_spacing, 60);
-        assert_eq!(s.hook.as_ref().unwrap().address, HOOK_1);
+        assert_eq!(s.hook.as_option().unwrap().address, HOOK_1);
 
         let m = &out.modify_liquidity[0];
         assert_eq!(m.token0, "0xt0");
         assert_eq!(m.fee_tier, 3000);
-        assert_eq!(m.hook.as_ref().unwrap().address, HOOK_1);
+        assert_eq!(m.hook.as_option().unwrap().address, HOOK_1);
     }
 
     #[test]
@@ -571,7 +571,7 @@ mod tests {
         assert_eq!(s.token1, "");
         assert_eq!(s.fee_tier, 0);
         assert_eq!(s.tick_spacing, 0);
-        assert!(s.hook.is_none());
+        assert!(s.hook.is_unset());
         // Raw payload untouched.
         assert_eq!(s.amount0, "-100");
 
