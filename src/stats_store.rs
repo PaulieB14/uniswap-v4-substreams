@@ -252,13 +252,13 @@ pub fn hook_deltas(events: &pb::Events) -> BTreeMap<String, Totals> {
     // its addability rests on `initialize` reverting for an already-initialised
     // pool, so this must never be widened to another event.
     for p in &events.pools {
-        if let Some(addr) = hook_address(p.hook.as_ref()) {
+        if let Some(addr) = hook_address(p.hook.as_option()) {
             acc.entry(addr).or_insert_with(Totals::new).pools += 1;
         }
     }
 
     for s in &events.swaps {
-        if let Some(addr) = hook_address(s.hook.as_ref()) {
+        if let Some(addr) = hook_address(s.hook.as_option()) {
             let e = acc.entry(addr).or_insert_with(Totals::new);
             e.swaps += 1;
             e.vol0 = e.vol0.clone() + abs_amount(&s.amount0);
@@ -267,7 +267,7 @@ pub fn hook_deltas(events: &pb::Events) -> BTreeMap<String, Totals> {
     }
 
     for m in &events.modify_liquidity {
-        if let Some(addr) = hook_address(m.hook.as_ref()) {
+        if let Some(addr) = hook_address(m.hook.as_option()) {
             acc.entry(addr).or_insert_with(Totals::new).modifies += 1;
         }
     }
@@ -386,13 +386,13 @@ where
     // the totals table learns the pool exists at all.
     let mut pools: BTreeMap<String, Identity> = BTreeMap::new();
     for p in &out.pools {
-        note(&mut pools, &p.id, &p.token0, &p.token1, p.hook.as_ref());
+        note(&mut pools, &p.id, &p.token0, &p.token1, p.hook.as_option());
     }
     for s in &out.swaps {
-        note(&mut pools, &s.pool_id, &s.token0, &s.token1, s.hook.as_ref());
+        note(&mut pools, &s.pool_id, &s.token0, &s.token1, s.hook.as_option());
     }
     for m in &out.modify_liquidity {
-        note(&mut pools, &m.pool_id, &m.token0, &m.token1, m.hook.as_ref());
+        note(&mut pools, &m.pool_id, &m.token0, &m.token1, m.hook.as_option());
     }
 
     // Hooks are derived from the pools touched, not scanned separately: a hook
@@ -425,7 +425,7 @@ where
             modify_liquidity_count: read(&pool_get, pool_total_key(pool_id, METRIC_MODIFIES)),
             volume_token0_abs: read(&pool_get, pool_total_key(pool_id, METRIC_VOL0)),
             volume_token1_abs: read(&pool_get, pool_total_key(pool_id, METRIC_VOL1)),
-            hook: id.hook.clone(),
+            hook: id.hook.clone().into(),
             last_block: block,
             // Decimal-adjusted volumes, set only when BOTH tokens have a
             // measured decimals(); an unmeasured decimals defaults to 18 and a
@@ -445,7 +445,7 @@ where
             volume_token0_abs: read(&hook_get, hook_total_key(&addr, METRIC_VOL0)),
             volume_token1_abs: read(&hook_get, hook_total_key(&addr, METRIC_VOL1)),
             hook_address: addr,
-            permissions: Some(perms),
+            permissions: Some(perms).into(),
             last_block: block,
         })
         .collect();
@@ -534,7 +534,7 @@ fn attach_usd(events: &mut pb::Events, prices: &StoreGetString) {
         // after every write in the block, so a swap that moves the anchor would
         // be valued at the price it just produced. The subgraph does the same
         // thing by updating bundle.ethPriceUSD only after computing amountUSD.
-        let ord = s.meta.as_ref().map(|m| m.log_index as u64).unwrap_or(0);
+        let ord = s.meta.as_option().map(|m| m.log_index as u64).unwrap_or(0);
         let native_usd = prices
             .get_at(ord, crate::pricing::NATIVE_USD_KEY)
             .and_then(|v| crate::pricing::decode_price_value(&v))
@@ -626,14 +626,14 @@ fn block_number(events: &pb::Events) -> u64 {
     events
         .swaps
         .first()
-        .and_then(|s| s.meta.as_ref())
+        .and_then(|s| s.meta.as_option())
         .or_else(|| {
             events
                 .modify_liquidity
                 .first()
-                .and_then(|m| m.meta.as_ref())
+                .and_then(|m| m.meta.as_option())
         })
-        .or_else(|| events.pools.first().and_then(|p| p.meta.as_ref()))
+        .or_else(|| events.pools.first().and_then(|p| p.meta.as_option()))
         .map(|m| m.block_number)
         .unwrap_or(0)
 }
@@ -669,8 +669,8 @@ mod tests {
             amount1: a1.to_string(),
             token0: "0xtoken0".to_string(),
             token1: "0xtoken1".to_string(),
-            hook,
-            meta: Some(meta(100, 1)),
+            hook: hook.into(),
+            meta: Some(meta(100, 1)).into(),
             ..Default::default()
         }
     }
@@ -678,8 +678,8 @@ mod tests {
     fn modify(pool: &str, hook: Option<pb::HookPermissions>) -> pb::ModifyLiquidity {
         pb::ModifyLiquidity {
             pool_id: pool.to_string(),
-            hook,
-            meta: Some(meta(100, 2)),
+            hook: hook.into(),
+            meta: Some(meta(100, 2)).into(),
             ..Default::default()
         }
     }
@@ -793,14 +793,14 @@ mod tests {
             pools: vec![
                 pb::Pool {
                     id: POOL_A.to_string(),
-                    hook: Some(h.clone()),
-                    meta: Some(meta(100, 0)),
+                    hook: Some(h.clone()).into(),
+                    meta: Some(meta(100, 0)).into(),
                     ..Default::default()
                 },
                 pb::Pool {
                     id: POOL_B.to_string(),
-                    hook: Some(h.clone()),
-                    meta: Some(meta(100, 0)),
+                    hook: Some(h.clone()).into(),
+                    meta: Some(meta(100, 0)).into(),
                     ..Default::default()
                 },
             ],
@@ -899,8 +899,8 @@ mod tests {
                 id: POOL_A.to_string(),
                 token0: "0xt0".to_string(),
                 token1: "0xt1".to_string(),
-                hook: Some(perms(HOOK_1, true)),
-                meta: Some(meta(777, 0)),
+                hook: Some(perms(HOOK_1, true)).into(),
+                meta: Some(meta(777, 0)).into(),
                 ..Default::default()
             }],
             ..Default::default()
@@ -927,8 +927,8 @@ mod tests {
                 id: POOL_A.to_string(),
                 token0: "0xreal0".to_string(),
                 token1: "0xreal1".to_string(),
-                hook: Some(perms(HOOK_1, true)),
-                meta: Some(meta(100, 0)),
+                hook: Some(perms(HOOK_1, true)).into(),
+                meta: Some(meta(100, 0)).into(),
                 ..Default::default()
             }],
             swaps: vec![s],
@@ -937,7 +937,7 @@ mod tests {
         let empty: BTreeMap<String, BigInt> = BTreeMap::new();
         let out = totals(events, |k| empty.get(k).cloned(), |k| empty.get(k).cloned());
         assert_eq!(out.pool_totals[0].token0, "0xreal0");
-        assert!(out.pool_totals[0].hook.is_some());
+        assert!(out.pool_totals[0].hook.is_set());
     }
 
     #[test]

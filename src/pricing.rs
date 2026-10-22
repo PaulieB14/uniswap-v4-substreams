@@ -706,7 +706,7 @@ fn observations(events: &pb::Events) -> BTreeMap<String, Observation> {
             p.decimals_measured,
             &p.sqrt_price,
             &p.liquidity,
-            p.meta.as_ref(),
+            p.meta.as_option(),
         ));
     }
     for s in &events.swaps {
@@ -719,7 +719,7 @@ fn observations(events: &pb::Events) -> BTreeMap<String, Observation> {
             s.decimals_measured,
             &s.sqrt_price_x96,
             &s.liquidity,
-            s.meta.as_ref(),
+            s.meta.as_option(),
         ));
     }
 
@@ -1453,7 +1453,7 @@ mod tests {
             decimals_measured: measured,
             sqrt_price_x96: sqrt.to_string(),
             liquidity: liquidity.to_string(),
-            meta: meta(35_000_000, log_index),
+            meta: meta(35_000_000, log_index).into(),
             ..Default::default()
         }
     }

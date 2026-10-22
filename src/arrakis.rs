@@ -55,8 +55,8 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
             salt: format!("0x{}", Hex::encode(ev.salt)),
             factory: FACTORY.to_string(),
             // The reason this module exists as more than a copy of arrakis.ts.
-            permissions: Some(crate::hooks::decode_hook(&ev.hook)),
-            meta: Some(meta(blk, tx, log_index)),
+            permissions: Some(crate::hooks::decode_hook(&ev.hook)).into(),
+            meta: Some(meta(blk, tx, log_index)).into(),
         });
     }
 }
@@ -80,7 +80,7 @@ fn meta(
         gas_used: tx.gas_used,
         gas_price: tx
             .gas_price
-            .as_ref()
+            .as_option()
             .map(|v| Into::<substreams::scalar::BigInt>::into(v).to_string())
             .unwrap_or_else(|| "0".to_string()),
     }

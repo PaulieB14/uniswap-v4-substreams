@@ -84,7 +84,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // destroying the pool's configured fee; keeping both is what
                 // makes "effective fee over time per pool" answerable at all.
                 fee: ev.fee.to_u64() as u32,
-                meta: Some(meta),
+                meta: Some(meta).into(),
                 // Denormalised pool identity (token0/token1/fee_tier/
                 // tick_spacing/hook) is left at proto3 default HERE ON PURPOSE.
                 // This module sees exactly one block and a Swap log carries only
@@ -116,7 +116,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // drops it, which makes its ModifyLiquidity rows ambiguous
                 // whenever one sender holds two salted positions on one range.
                 salt: bytes32_hex(&ev.salt),
-                meta: Some(meta),
+                meta: Some(meta).into(),
                 // Same as Swap above: pool identity is filled by `map_enriched`
                 // from `store_pools`, not here.
                 ..Default::default()
@@ -138,14 +138,14 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // The headline divergence: the hook's permission set, decoded
                 // from the low 14 bits of its own address. No RPC, no ABI, and
                 // it works for a hook that has never been seen before.
-                hook: Some(hooks::decode_hook(&ev.hooks)),
+                hook: Some(hooks::decode_hook(&ev.hooks)).into(),
                 sqrt_price: ev.sqrt_price_x96.to_string(),
                 tick: ev.tick.to_i32(),
                 // A pool is always initialised empty — the first ModifyLiquidity
                 // is a separate event. Matches the subgraph's ZERO_BI seed.
                 liquidity: "0".to_string(),
                 is_dynamic_fee: hooks::is_dynamic_fee(fee),
-                meta: Some(meta),
+                meta: Some(meta).into(),
                 // Filled later by map_enriched from store_tokens. Empty here on
                 // purpose: at Initialize the token contracts have not been read
                 // yet, and a placeholder symbol would outlive the gap.
@@ -175,7 +175,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 to: hooks::addr_hex(&ev.to),
                 currency_id: currency_id_decimal(&ev.id),
                 amount: ev.amount.to_string(),
-                meta: Some(meta),
+                meta: Some(meta).into(),
                 // owner / spender / operator / approved are not fields of
                 // Transfer; left at proto3 default rather than aliased onto
                 // `from`, so `kind` alone tells a consumer which columns mean
@@ -211,7 +211,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 amount0_adjusted: String::new(),
                 amount1_adjusted: String::new(),
                 amounts_adjusted: false,
-                meta: Some(meta),
+                meta: Some(meta).into(),
             });
         } else if let Some(ev) = events::Approval::match_and_decode(log) {
             // Per-currency allowance on claim tokens. Distinct from OperatorSet
@@ -228,7 +228,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // rather than clamped — the column is NUMERIC(78,0), which
                 // holds it, and "infinite" is a UI decision, not a decode one.
                 amount: ev.amount.to_string(),
-                meta: Some(meta),
+                meta: Some(meta).into(),
                 ..Default::default()
             });
         } else if let Some(ev) = events::OperatorSet::match_and_decode(log) {
@@ -242,7 +242,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // is just as meaningful as true, so the row is emitted either
                 // way and the boolean is carried rather than filtered on.
                 approved: ev.approved,
-                meta: Some(meta),
+                meta: Some(meta).into(),
                 // currency_id stays at proto3 default (-> 0 in Postgres) and
                 // that is not a currency: an operator is authorised across
                 // EVERY id at once, so there is no single currency to name.
@@ -267,7 +267,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 // overflow — the ABI type is uint24.
                 protocol_fee: ev.protocol_fee.to_u64() as u32,
                 controller: String::new(),
-                meta: Some(meta),
+                meta: Some(meta).into(),
             });
         } else if let Some(ev) = events::ProtocolFeeControllerUpdated::match_and_decode(log) {
             let meta = hooks::meta(blk, log.receipt.transaction, log.log);
@@ -281,7 +281,7 @@ pub fn extract(blk: &Block, events: &mut pb::Events) {
                 pool_id: String::new(),
                 protocol_fee: 0,
                 controller: hooks::addr_hex(&ev.protocol_fee_controller),
-                meta: Some(meta),
+                meta: Some(meta).into(),
             });
         }
     }

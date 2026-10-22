@@ -98,7 +98,7 @@ pub fn store_pools(events: pb::Events, store: StoreSetProto<pb::Pool>) {
     for pool in &events.pools {
         let ord = pool
             .meta
-            .as_ref()
+            .as_option()
             .map(|m| m.log_index as u64)
             .unwrap_or(last_ord)
             .max(last_ord);
