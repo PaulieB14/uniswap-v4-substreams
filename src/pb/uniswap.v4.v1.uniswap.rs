@@ -4551,6 +4551,20 @@ pub struct Events {
     pub pool_totals: ::buffa::alloc::vec::Vec<PoolTotals>,
     /// Field 12: `hook_totals`
     pub hook_totals: ::buffa::alloc::vec::Vec<HookTotals>,
+    /// ---- fields 13-15, additive (v0.3.0) — Uniswap Aggregator Hooks ----------
+    /// Aggregator Hooks (Uniswap/v4-hooks-public, src/aggregator-hooks) wrap an
+    /// external venue (Slipstream, PancakeSwap V3, Uniswap V2/V3, Curve, Fluid,
+    /// LitePSM, UniswapX) as a v4 pool. The hook takes the whole swap in
+    /// beforeSwap via a ReturnDelta, so the PoolManager Swap log for these pools
+    /// carries amount0 = amount1 = 0. The real amounts are only in the hook's own
+    /// HookSwap event, which is what these fields carry.
+    ///
+    /// Field 13: `aggregator_swaps`
+    pub aggregator_swaps: ::buffa::alloc::vec::Vec<AggregatorSwap>,
+    /// Field 14: `aggregator_pools`
+    pub aggregator_pools: ::buffa::alloc::vec::Vec<AggregatorPool>,
+    /// Field 15: `aggregator_fees`
+    pub aggregator_fees: ::buffa::alloc::vec::Vec<AggregatorFee>,
 }
 impl ::core::fmt::Debug for Events {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
@@ -4567,6 +4581,9 @@ impl ::core::fmt::Debug for Events {
             .field("protocol_fee_events", &self.protocol_fee_events)
             .field("pool_totals", &self.pool_totals)
             .field("hook_totals", &self.hook_totals)
+            .field("aggregator_swaps", &self.aggregator_swaps)
+            .field("aggregator_pools", &self.aggregator_pools)
+            .field("aggregator_fees", &self.aggregator_fees)
             .finish()
     }
 }
@@ -4693,6 +4710,30 @@ impl ::buffa::Message for Events {
                 += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                     + inner_size as u64;
         }
+        for v in &self.aggregator_swaps {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.aggregator_pools {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.aggregator_fees {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
         ::buffa::saturate_size(size)
     }
     fn write_to(
@@ -4793,6 +4834,30 @@ impl ::buffa::Message for Events {
         for v in &self.hook_totals {
             ::buffa::types::put_len_delimited_header(
                 12u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.aggregator_swaps {
+            ::buffa::types::put_len_delimited_header(
+                13u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.aggregator_pools {
+            ::buffa::types::put_len_delimited_header(
+                14u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.aggregator_fees {
+            ::buffa::types::put_len_delimited_header(
+                15u32,
                 u64::from(__cache.consume_next()),
                 buf,
             );
@@ -4954,6 +5019,42 @@ impl ::buffa::Message for Events {
                 ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
                 self.hook_totals.push(elem);
             }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.aggregator_swaps.push(elem);
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.aggregator_pools.push(elem);
+            }
+            15u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let mut elem = ::core::default::Default::default();
+                ctx.register_element_memory(
+                    ::buffa::__private::element_footprint(&elem),
+                )?;
+                ::buffa::Message::merge_length_delimited(&mut elem, buf, ctx)?;
+                self.aggregator_fees.push(elem);
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, buf, ctx.depth())?;
             }
@@ -4973,5 +5074,734 @@ impl ::buffa::Message for Events {
         self.protocol_fee_events.clear();
         self.pool_totals.clear();
         self.hook_totals.clear();
+        self.aggregator_swaps.clear();
+        self.aggregator_pools.clear();
+        self.aggregator_fees.clear();
+    }
+}
+/// IAggregatorHook.HookSwap(PoolId indexed poolId, address indexed sender,
+///   int256 amount0, int256 amount1, uint24 swapFee). Amounts are the swapper's
+/// deltas with v4 sign convention (negative = paid in) and INCLUDE the protocol
+/// fee; swapFee is the protocol fee in pips actually applied on this swap.
+#[derive(Clone, PartialEq, Default)]
+pub struct AggregatorSwap {
+    /// \<txHash\>-\<logIndex\>
+    ///
+    /// Field 1: `id`
+    pub id: ::buffa::alloc::string::String,
+    /// Field 2: `pool_id`
+    pub pool_id: ::buffa::alloc::string::String,
+    /// emitting contract
+    ///
+    /// Field 3: `hook`
+    pub hook: ::buffa::alloc::string::String,
+    /// from the hook-address ID byte (see aggregator.rs)
+    ///
+    /// Field 4: `source`
+    pub source: ::buffa::alloc::string::String,
+    /// Field 5: `sender`
+    pub sender: ::buffa::alloc::string::String,
+    /// Field 6: `amount0`
+    pub amount0: ::buffa::alloc::string::String,
+    /// Field 7: `amount1`
+    pub amount1: ::buffa::alloc::string::String,
+    /// Field 8: `protocol_fee_pips`
+    pub protocol_fee_pips: u32,
+    /// from the preceding ProtocolFeesCollected, "0" if none
+    ///
+    /// Field 9: `protocol_fee_amount`
+    pub protocol_fee_amount: ::buffa::alloc::string::String,
+    /// Field 10: `protocol_fee_currency`
+    pub protocol_fee_currency: ::buffa::alloc::string::String,
+    /// Filled by map_enriched from store_pools. verified = the pool's PoolKey.hooks
+    /// equals the emitting address — i.e. this is a real v4 aggregator pool, not a
+    /// stray contract emitting the same event signature.
+    ///
+    /// Field 11: `token0`
+    pub token0: ::buffa::alloc::string::String,
+    /// Field 12: `token1`
+    pub token1: ::buffa::alloc::string::String,
+    /// Field 13: `verified`
+    pub verified: bool,
+    /// Field 14: `meta`
+    pub meta: ::buffa::MessageField<Meta, ::buffa::Inline<Meta>>,
+}
+impl ::core::fmt::Debug for AggregatorSwap {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("AggregatorSwap")
+            .field("id", &self.id)
+            .field("pool_id", &self.pool_id)
+            .field("hook", &self.hook)
+            .field("source", &self.source)
+            .field("sender", &self.sender)
+            .field("amount0", &self.amount0)
+            .field("amount1", &self.amount1)
+            .field("protocol_fee_pips", &self.protocol_fee_pips)
+            .field("protocol_fee_amount", &self.protocol_fee_amount)
+            .field("protocol_fee_currency", &self.protocol_fee_currency)
+            .field("token0", &self.token0)
+            .field("token1", &self.token1)
+            .field("verified", &self.verified)
+            .field("meta", &self.meta)
+            .finish()
+    }
+}
+impl AggregatorSwap {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorSwap";
+}
+::buffa::impl_default_instance!(AggregatorSwap);
+impl ::buffa::MessageName for AggregatorSwap {
+    const PACKAGE: &'static str = "uniswap.v4.v1";
+    const NAME: &'static str = "AggregatorSwap";
+    const FULL_NAME: &'static str = "uniswap.v4.v1.AggregatorSwap";
+    const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorSwap";
+}
+impl ::buffa::Message for AggregatorSwap {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.id) as u64;
+        }
+        if !self.pool_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.pool_id) as u64;
+        }
+        if !self.hook.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.hook) as u64;
+        }
+        if !self.source.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source) as u64;
+        }
+        if !self.sender.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.sender) as u64;
+        }
+        if !self.amount0.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.amount0) as u64;
+        }
+        if !self.amount1.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.amount1) as u64;
+        }
+        if self.protocol_fee_pips != 0u32 {
+            size
+                += 1u64
+                    + ::buffa::types::uint32_encoded_len(self.protocol_fee_pips) as u64;
+        }
+        if !self.protocol_fee_amount.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.protocol_fee_amount)
+                        as u64;
+        }
+        if !self.protocol_fee_currency.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.protocol_fee_currency)
+                        as u64;
+        }
+        if !self.token0.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.token0) as u64;
+        }
+        if !self.token1.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.token1) as u64;
+        }
+        if self.verified {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.meta.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.meta.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.id, buf);
+        }
+        if !self.pool_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.pool_id, buf);
+        }
+        if !self.hook.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.hook, buf);
+        }
+        if !self.source.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.source, buf);
+        }
+        if !self.sender.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.sender, buf);
+        }
+        if !self.amount0.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.amount0, buf);
+        }
+        if !self.amount1.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.amount1, buf);
+        }
+        if self.protocol_fee_pips != 0u32 {
+            ::buffa::types::put_uint32_field(8u32, self.protocol_fee_pips, buf);
+        }
+        if !self.protocol_fee_amount.is_empty() {
+            ::buffa::types::put_string_field(9u32, &self.protocol_fee_amount, buf);
+        }
+        if !self.protocol_fee_currency.is_empty() {
+            ::buffa::types::put_string_field(10u32, &self.protocol_fee_currency, buf);
+        }
+        if !self.token0.is_empty() {
+            ::buffa::types::put_string_field(11u32, &self.token0, buf);
+        }
+        if !self.token1.is_empty() {
+            ::buffa::types::put_string_field(12u32, &self.token1, buf);
+        }
+        if self.verified {
+            ::buffa::types::put_bool_field(13u32, self.verified, buf);
+        }
+        if self.meta.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                14u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.meta.write_to(__cache, buf);
+        }
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.pool_id, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.hook, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.sender, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.amount0, buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.amount1, buf)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.protocol_fee_pips = ::buffa::types::decode_uint32(buf)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.protocol_fee_amount, buf)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.protocol_fee_currency, buf)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.token0, buf)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.token1, buf)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.verified = ::buffa::types::decode_bool(buf)?;
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.meta.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, buf, ctx.depth())?;
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.id.clear();
+        self.pool_id.clear();
+        self.hook.clear();
+        self.source.clear();
+        self.sender.clear();
+        self.amount0.clear();
+        self.amount1.clear();
+        self.protocol_fee_pips = 0u32;
+        self.protocol_fee_amount.clear();
+        self.protocol_fee_currency.clear();
+        self.token0.clear();
+        self.token1.clear();
+        self.verified = false;
+        self.meta = ::buffa::MessageField::none();
+    }
+}
+/// AggregatorPoolRegistered(PoolId indexed poolId), emitted in beforeInitialize.
+#[derive(Clone, PartialEq, Default)]
+pub struct AggregatorPool {
+    /// Field 1: `pool_id`
+    pub pool_id: ::buffa::alloc::string::String,
+    /// Field 2: `hook`
+    pub hook: ::buffa::alloc::string::String,
+    /// Field 3: `source`
+    pub source: ::buffa::alloc::string::String,
+    /// Field 4: `token0`
+    pub token0: ::buffa::alloc::string::String,
+    /// Field 5: `token1`
+    pub token1: ::buffa::alloc::string::String,
+    /// Field 6: `verified`
+    pub verified: bool,
+    /// Field 7: `meta`
+    pub meta: ::buffa::MessageField<Meta, ::buffa::Inline<Meta>>,
+}
+impl ::core::fmt::Debug for AggregatorPool {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("AggregatorPool")
+            .field("pool_id", &self.pool_id)
+            .field("hook", &self.hook)
+            .field("source", &self.source)
+            .field("token0", &self.token0)
+            .field("token1", &self.token1)
+            .field("verified", &self.verified)
+            .field("meta", &self.meta)
+            .finish()
+    }
+}
+impl AggregatorPool {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorPool";
+}
+::buffa::impl_default_instance!(AggregatorPool);
+impl ::buffa::MessageName for AggregatorPool {
+    const PACKAGE: &'static str = "uniswap.v4.v1";
+    const NAME: &'static str = "AggregatorPool";
+    const FULL_NAME: &'static str = "uniswap.v4.v1.AggregatorPool";
+    const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorPool";
+}
+impl ::buffa::Message for AggregatorPool {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.pool_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.pool_id) as u64;
+        }
+        if !self.hook.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.hook) as u64;
+        }
+        if !self.source.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source) as u64;
+        }
+        if !self.token0.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.token0) as u64;
+        }
+        if !self.token1.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.token1) as u64;
+        }
+        if self.verified {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.meta.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.meta.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.pool_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.pool_id, buf);
+        }
+        if !self.hook.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.hook, buf);
+        }
+        if !self.source.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.source, buf);
+        }
+        if !self.token0.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.token0, buf);
+        }
+        if !self.token1.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.token1, buf);
+        }
+        if self.verified {
+            ::buffa::types::put_bool_field(6u32, self.verified, buf);
+        }
+        if self.meta.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                7u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.meta.write_to(__cache, buf);
+        }
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.pool_id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.hook, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.source, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.token0, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.token1, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.verified = ::buffa::types::decode_bool(buf)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.meta.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, buf, ctx.depth())?;
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.pool_id.clear();
+        self.hook.clear();
+        self.source.clear();
+        self.token0.clear();
+        self.token1.clear();
+        self.verified = false;
+        self.meta = ::buffa::MessageField::none();
+    }
+}
+/// ProtocolFees.ProtocolFeesCollected(address indexed recipient,
+///   Currency indexed currency, uint256 amount). recipient = the TokenJar.
+#[derive(Clone, PartialEq, Default)]
+pub struct AggregatorFee {
+    /// Field 1: `id`
+    pub id: ::buffa::alloc::string::String,
+    /// Field 2: `hook`
+    pub hook: ::buffa::alloc::string::String,
+    /// Field 3: `recipient`
+    pub recipient: ::buffa::alloc::string::String,
+    /// Field 4: `currency`
+    pub currency: ::buffa::alloc::string::String,
+    /// Field 5: `amount`
+    pub amount: ::buffa::alloc::string::String,
+    /// Field 6: `meta`
+    pub meta: ::buffa::MessageField<Meta, ::buffa::Inline<Meta>>,
+}
+impl ::core::fmt::Debug for AggregatorFee {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("AggregatorFee")
+            .field("id", &self.id)
+            .field("hook", &self.hook)
+            .field("recipient", &self.recipient)
+            .field("currency", &self.currency)
+            .field("amount", &self.amount)
+            .field("meta", &self.meta)
+            .finish()
+    }
+}
+impl AggregatorFee {
+    /// Protobuf type URL for this message, for use with `Any::pack` and
+    /// `Any::unpack_if`.
+    ///
+    /// Format: `type.googleapis.com/<fully.qualified.TypeName>`
+    pub const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorFee";
+}
+::buffa::impl_default_instance!(AggregatorFee);
+impl ::buffa::MessageName for AggregatorFee {
+    const PACKAGE: &'static str = "uniswap.v4.v1";
+    const NAME: &'static str = "AggregatorFee";
+    const FULL_NAME: &'static str = "uniswap.v4.v1.AggregatorFee";
+    const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorFee";
+}
+impl ::buffa::Message for AggregatorFee {
+    /// Returns the total encoded size in bytes.
+    ///
+    /// Accumulates in `u64` (which cannot overflow for in-memory
+    /// data) and saturates to `u32` at return, so a message whose
+    /// encoded size exceeds the 2 GiB protobuf limit yields a value
+    /// above [`::buffa::MAX_MESSAGE_BYTES`] that the encode entry
+    /// points reject, never a silently wrapped size.
+    #[allow(clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.id) as u64;
+        }
+        if !self.hook.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.hook) as u64;
+        }
+        if !self.recipient.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.recipient) as u64;
+        }
+        if !self.currency.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.currency) as u64;
+        }
+        if !self.amount.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.amount) as u64;
+        }
+        if self.meta.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.meta.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        ::buffa::saturate_size(size)
+    }
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.id, buf);
+        }
+        if !self.hook.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.hook, buf);
+        }
+        if !self.recipient.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.recipient, buf);
+        }
+        if !self.currency.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.currency, buf);
+        }
+        if !self.amount.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.amount, buf);
+        }
+        if self.meta.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.meta.write_to(__cache, buf);
+        }
+    }
+    fn merge_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        buf: &mut impl ::buffa::bytes::Buf,
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<(), ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::bytes::Buf as _;
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.id, buf)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.hook, buf)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.recipient, buf)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.currency, buf)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.amount, buf)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::Message::merge_length_delimited(
+                    self.meta.get_or_insert_default(),
+                    buf,
+                    ctx,
+                )?;
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, buf, ctx.depth())?;
+            }
+        }
+        ::core::result::Result::Ok(())
+    }
+    fn clear(&mut self) {
+        self.id.clear();
+        self.hook.clear();
+        self.recipient.clear();
+        self.currency.clear();
+        self.amount.clear();
+        self.meta = ::buffa::MessageField::none();
     }
 }

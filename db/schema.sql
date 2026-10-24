@@ -763,3 +763,90 @@ CREATE TABLE IF NOT EXISTS token (
     last_seen_block     BIGINT
 );
 CREATE INDEX IF NOT EXISTS token_symbol_idx ON token (symbol);
+
+-- ---------------------------------------------------------------------------
+-- Uniswap Aggregator Hooks (v0.3.0, additive). Source:
+-- github.com/Uniswap/v4-hooks-public/tree/main/src/aggregator-hooks
+--
+-- An aggregator pool's PoolManager `swap` row has amount0 = amount1 = 0: the
+-- hook takes the whole trade in beforeSwap. Use aggregator_swap for its real
+-- amounts and per-venue volume. `verified` = PoolKey.hooks equals the emitting
+-- contract (joined from store_pools); filter on it.
+-- source = venue from the hook address's first byte (README ID table).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS aggregator_pool
+(
+    id              VARCHAR(66)   NOT NULL,   -- v4 pool id
+    hook            VARCHAR(42)   NOT NULL,
+    source          VARCHAR(32)   NOT NULL,
+    token0          VARCHAR(42)   NOT NULL DEFAULT '',
+    token1          VARCHAR(42)   NOT NULL DEFAULT '',
+    verified        BOOLEAN       NOT NULL DEFAULT FALSE,
+    block_number    BIGINT        NOT NULL,
+    block_timestamp BIGINT        NOT NULL,
+    tx_hash         VARCHAR(66)   NOT NULL,
+    log_index       INTEGER       NOT NULL,
+    origin          VARCHAR(42)   NOT NULL,
+    gas_used        BIGINT,
+    gas_price       NUMERIC(78,0),
+    CONSTRAINT aggregator_pool_pk PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS aggregator_pool_hook_idx ON aggregator_pool (hook);
+
+CREATE TABLE IF NOT EXISTS aggregator_swap
+(
+    id                    VARCHAR(80)   NOT NULL,
+    pool_id               VARCHAR(66)   NOT NULL,
+    hook                  VARCHAR(42)   NOT NULL,
+    source                VARCHAR(32)   NOT NULL,
+    sender                VARCHAR(42)   NOT NULL,
+    token0                VARCHAR(42)   NOT NULL DEFAULT '',
+    token1                VARCHAR(42)   NOT NULL DEFAULT '',
+    amount0               NUMERIC(78,0) NOT NULL,   -- swapper delta, raw, signed
+    amount1               NUMERIC(78,0) NOT NULL,
+    protocol_fee_pips     INTEGER       NOT NULL DEFAULT 0,
+    protocol_fee_amount   NUMERIC(78,0) NOT NULL DEFAULT 0,
+    protocol_fee_currency VARCHAR(42)   NOT NULL DEFAULT '',
+    verified              BOOLEAN       NOT NULL DEFAULT FALSE,
+    block_number          BIGINT        NOT NULL,
+    block_timestamp       BIGINT        NOT NULL,
+    tx_hash               VARCHAR(66)   NOT NULL,
+    log_index             INTEGER       NOT NULL,
+    origin                VARCHAR(42)   NOT NULL,
+    gas_used              BIGINT,
+    gas_price             NUMERIC(78,0),
+    CONSTRAINT aggregator_swap_pk PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS aggregator_swap_pool_block_idx   ON aggregator_swap (pool_id, block_number DESC);
+CREATE INDEX IF NOT EXISTS aggregator_swap_source_block_idx ON aggregator_swap (source, block_number DESC);
+
+CREATE TABLE IF NOT EXISTS aggregator_fee
+(
+    id              VARCHAR(80)   NOT NULL,
+    hook            VARCHAR(42)   NOT NULL,
+    recipient       VARCHAR(42)   NOT NULL,   -- TokenJar
+    currency        VARCHAR(42)   NOT NULL,
+    amount          NUMERIC(78,0) NOT NULL,
+    block_number    BIGINT        NOT NULL,
+    block_timestamp BIGINT        NOT NULL,
+    tx_hash         VARCHAR(66)   NOT NULL,
+    log_index       INTEGER       NOT NULL,
+    origin          VARCHAR(42)   NOT NULL,
+    gas_used        BIGINT,
+    gas_price       NUMERIC(78,0),
+    CONSTRAINT aggregator_fee_pk PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS aggregator_fee_currency_idx ON aggregator_fee (currency, block_number DESC);
+
+-- Per-venue daily volume, raw token units (scale via token.decimals).
+CREATE OR REPLACE VIEW aggregator_source_daily AS
+SELECT source,
+       (to_timestamp(block_timestamp) AT TIME ZONE 'UTC')::date AS day,
+       token0, token1,
+       COUNT(*)            AS swap_count,
+       SUM(ABS(amount0))   AS volume_token0_abs,
+       SUM(ABS(amount1))   AS volume_token1_abs,
+       SUM(protocol_fee_amount) AS protocol_fee_amount
+FROM aggregator_swap
+WHERE verified
+GROUP BY 1, 2, 3, 4;

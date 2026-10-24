@@ -512,4 +512,61 @@ message Events {
   // end and `db_out` can be repointed at it with a one-line manifest change.
   repeated PoolTotals       pool_totals         = 11;
   repeated HookTotals       hook_totals         = 12;
+
+  // ---- fields 13-15, additive (v0.3.0) — Uniswap Aggregator Hooks ----------
+  // Aggregator Hooks (Uniswap/v4-hooks-public, src/aggregator-hooks) wrap an
+  // external venue (Slipstream, PancakeSwap V3, Uniswap V2/V3, Curve, Fluid,
+  // LitePSM, UniswapX) as a v4 pool. The hook takes the whole swap in
+  // beforeSwap via a ReturnDelta, so the PoolManager Swap log for these pools
+  // carries amount0 = amount1 = 0. The real amounts are only in the hook's own
+  // HookSwap event, which is what these fields carry.
+  repeated AggregatorSwap   aggregator_swaps    = 13;
+  repeated AggregatorPool   aggregator_pools    = 14;
+  repeated AggregatorFee    aggregator_fees     = 15;
+}
+
+// IAggregatorHook.HookSwap(PoolId indexed poolId, address indexed sender,
+//   int256 amount0, int256 amount1, uint24 swapFee). Amounts are the swapper's
+// deltas with v4 sign convention (negative = paid in) and INCLUDE the protocol
+// fee; swapFee is the protocol fee in pips actually applied on this swap.
+message AggregatorSwap {
+  string id               = 1;   // <txHash>-<logIndex>
+  string pool_id          = 2;
+  string hook             = 3;   // emitting contract
+  string source           = 4;   // from the hook-address ID byte (see aggregator.rs)
+  string sender           = 5;
+  string amount0          = 6;
+  string amount1          = 7;
+  uint32 protocol_fee_pips= 8;
+  string protocol_fee_amount   = 9;  // from the preceding ProtocolFeesCollected, "0" if none
+  string protocol_fee_currency = 10;
+  // Filled by map_enriched from store_pools. verified = the pool's PoolKey.hooks
+  // equals the emitting address — i.e. this is a real v4 aggregator pool, not a
+  // stray contract emitting the same event signature.
+  string token0           = 11;
+  string token1           = 12;
+  bool   verified         = 13;
+  Meta   meta             = 14;
+}
+
+// AggregatorPoolRegistered(PoolId indexed poolId), emitted in beforeInitialize.
+message AggregatorPool {
+  string pool_id = 1;
+  string hook    = 2;
+  string source  = 3;
+  string token0  = 4;
+  string token1  = 5;
+  bool verified  = 6;
+  Meta meta      = 7;
+}
+
+// ProtocolFees.ProtocolFeesCollected(address indexed recipient,
+//   Currency indexed currency, uint256 amount). recipient = the TokenJar.
+message AggregatorFee {
+  string id        = 1;
+  string hook      = 2;
+  string recipient = 3;
+  string currency  = 4;
+  string amount    = 5;
+  Meta meta        = 6;
 }

@@ -1,11 +1,11 @@
 specVersion: v0.1.0
 package:
   name: uniswap_v4_base
-  version: v0.2.0
+  version: v0.3.0
   url: https://github.com/PaulieB14/uniswap-v4-substreams
   image: ./icon.png
   description: |
-    Uniswap v4 DEX on Base: swaps, pools, liquidity, volume.
+    Uniswap v4 DEX on Base: swaps, pools, liquidity, volume, and Uniswap Aggregator Hooks (Slipstream, PancakeSwap V3 and other wrapped venues).
 
     Uniswap V4 on Base, converted from the uniswap-v4-base-3 subgraph
     (Qmbsc6XQWbiv4DfLVfaNciScqYLyDWUYjWzrFBbzzmRsMB). Adds hook permission
