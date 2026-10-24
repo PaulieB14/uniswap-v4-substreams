@@ -78,6 +78,17 @@ pub fn db_out(events: pb::Events) -> Result<DatabaseChanges, Error> {
         push_protocol_fee_event(&mut changes, pf, idx);
     }
 
+    // Aggregator Hooks (v0.3.0, additive tables).
+    for (idx, a) in events.aggregator_pools.iter().enumerate() {
+        push_aggregator_pool(&mut changes, a, idx);
+    }
+    for (idx, f) in events.aggregator_fees.iter().enumerate() {
+        push_aggregator_fee(&mut changes, f, idx);
+    }
+    for (idx, s) in events.aggregator_swaps.iter().enumerate() {
+        push_aggregator_swap(&mut changes, s, idx);
+    }
+
     // Aggregates last. They summarise the block's event rows, so applying them
     // after those rows keeps a mid-batch reader from seeing a summary that
     // counts events it cannot yet see. See `stats_ordinal`.
@@ -500,6 +511,60 @@ fn push_protocol_fee_event(changes: &mut DatabaseChanges, pf: &pb::ProtocolFeeEv
     tc.change("protocol_fee", (0u32, pf.protocol_fee));
     tc.change("controller", ("", pf.controller.as_str()));
     set_meta(tc, pf.meta.as_option());
+}
+
+fn push_aggregator_pool(changes: &mut DatabaseChanges, a: &pb::AggregatorPool, idx: usize) {
+    if a.pool_id.is_empty() {
+        return;
+    }
+    let ordinal = ordinal_of(a.meta.as_option(), idx);
+    let tc = changes.push_change("aggregator_pool", &a.pool_id, ordinal, Operation::Create);
+    tc.change("hook", ("", a.hook.as_str()));
+    tc.change("source", ("", a.source.as_str()));
+    tc.change("token0", ("", a.token0.as_str()));
+    tc.change("token1", ("", a.token1.as_str()));
+    tc.change("verified", (false, a.verified));
+    set_meta(tc, a.meta.as_option());
+}
+
+fn push_aggregator_fee(changes: &mut DatabaseChanges, f: &pb::AggregatorFee, idx: usize) {
+    if f.id.is_empty() {
+        return;
+    }
+    let ordinal = ordinal_of(f.meta.as_option(), idx);
+    let tc = changes.push_change("aggregator_fee", &f.id, ordinal, Operation::Create);
+    tc.change("hook", ("", f.hook.as_str()));
+    tc.change("recipient", ("", f.recipient.as_str()));
+    tc.change("currency", ("", f.currency.as_str()));
+    tc.change("amount", ("0", nz(&f.amount)));
+    set_meta(tc, f.meta.as_option());
+}
+
+fn push_aggregator_swap(changes: &mut DatabaseChanges, s: &pb::AggregatorSwap, idx: usize) {
+    if s.id.is_empty() {
+        return;
+    }
+    let ordinal = ordinal_of(s.meta.as_option(), idx);
+    let tc = changes.push_change("aggregator_swap", &s.id, ordinal, Operation::Create);
+    tc.change("pool_id", ("", s.pool_id.as_str()));
+    tc.change("hook", ("", s.hook.as_str()));
+    tc.change("source", ("", s.source.as_str()));
+    tc.change("sender", ("", s.sender.as_str()));
+    tc.change("token0", ("", s.token0.as_str()));
+    tc.change("token1", ("", s.token1.as_str()));
+    tc.change("amount0", ("0", nz(&s.amount0)));
+    tc.change("amount1", ("0", nz(&s.amount1)));
+    tc.change("protocol_fee_pips", (0u32, s.protocol_fee_pips));
+    tc.change("protocol_fee_amount", ("0", nz(&s.protocol_fee_amount)));
+    tc.change("protocol_fee_currency", ("", s.protocol_fee_currency.as_str()));
+    tc.change("verified", (false, s.verified));
+    set_meta(tc, s.meta.as_option());
+}
+
+/// NUMERIC columns must never receive "" (that broke the Postgres sink in
+/// other packs); empty → "0".
+fn nz(s: &str) -> &str {
+    if s.is_empty() { "0" } else { s }
 }
 
 // ---------------------------------------------------------------------------

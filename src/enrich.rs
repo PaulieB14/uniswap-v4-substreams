@@ -395,11 +395,13 @@ pub fn map_enriched(
     // `get_last`, not `get_first`/`get_at` — see the doc comment on `enrich`
     // for why that is what makes a same-block `Initialize` resolve, and why it
     // is safe only for PoolKey-immutable fields.
-    Ok(enrich(
+    let mut out = enrich(
         events,
         |pool_id| store.get_last(pool_key(pool_id)),
         |addr| tokens.get_last(format!("token:{}", addr)),
-    ))
+    );
+    crate::aggregator::enrich(&mut out, |pool_id| store.get_last(pool_key(pool_id)));
+    Ok(out)
 }
 
 /// Magnitude of a signed decimal-integer string.

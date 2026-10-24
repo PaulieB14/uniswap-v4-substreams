@@ -1120,7 +1120,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "uniswap-v4-substreams"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "buffa",
@@ -1131,6 +1131,7 @@ dependencies = [
  "substreams",
  "substreams-database-change",
  "substreams-ethereum",
+ "tiny-keccak",
 ]
 
 [[package]]

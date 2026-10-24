@@ -116,3 +116,21 @@ pub use self::__buffa::view::EventsView;
 pub use self::__buffa::view::EventsOwnedView;
 #[doc(inline)]
 pub use self::__buffa::lazy_view::EventsLazyView;
+#[doc(inline)]
+pub use self::__buffa::view::AggregatorSwapView;
+#[doc(inline)]
+pub use self::__buffa::view::AggregatorSwapOwnedView;
+#[doc(inline)]
+pub use self::__buffa::lazy_view::AggregatorSwapLazyView;
+#[doc(inline)]
+pub use self::__buffa::view::AggregatorPoolView;
+#[doc(inline)]
+pub use self::__buffa::view::AggregatorPoolOwnedView;
+#[doc(inline)]
+pub use self::__buffa::lazy_view::AggregatorPoolLazyView;
+#[doc(inline)]
+pub use self::__buffa::view::AggregatorFeeView;
+#[doc(inline)]
+pub use self::__buffa::view::AggregatorFeeOwnedView;
+#[doc(inline)]
+pub use self::__buffa::lazy_view::AggregatorFeeLazyView;

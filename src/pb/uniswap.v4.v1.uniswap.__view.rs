@@ -7535,6 +7535,29 @@ pub struct EventsView<'a> {
         'a,
         super::super::__buffa::view::HookTotalsView<'a>,
     >,
+    /// ---- fields 13-15, additive (v0.3.0) — Uniswap Aggregator Hooks ----------
+    /// Aggregator Hooks (Uniswap/v4-hooks-public, src/aggregator-hooks) wrap an
+    /// external venue (Slipstream, PancakeSwap V3, Uniswap V2/V3, Curve, Fluid,
+    /// LitePSM, UniswapX) as a v4 pool. The hook takes the whole swap in
+    /// beforeSwap via a ReturnDelta, so the PoolManager Swap log for these pools
+    /// carries amount0 = amount1 = 0. The real amounts are only in the hook's own
+    /// HookSwap event, which is what these fields carry.
+    ///
+    /// Field 13: `aggregator_swaps`
+    pub aggregator_swaps: ::buffa::RepeatedView<
+        'a,
+        super::super::__buffa::view::AggregatorSwapView<'a>,
+    >,
+    /// Field 14: `aggregator_pools`
+    pub aggregator_pools: ::buffa::RepeatedView<
+        'a,
+        super::super::__buffa::view::AggregatorPoolView<'a>,
+    >,
+    /// Field 15: `aggregator_fees`
+    pub aggregator_fees: ::buffa::RepeatedView<
+        'a,
+        super::super::__buffa::view::AggregatorFeeView<'a>,
+    >,
 }
 impl<'a> ::buffa::MessageView<'a> for EventsView<'a> {
     type Owned = super::super::Events;
@@ -7792,6 +7815,66 @@ impl<'a> ::buffa::MessageView<'a> for EventsView<'a> {
                         )?,
                     );
             }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                ctx.register_element_memory(
+                    ::core::mem::size_of::<
+                        super::super::__buffa::view::AggregatorSwapView,
+                    >(),
+                )?;
+                view.aggregator_swaps
+                    .push(
+                        <super::super::__buffa::view::AggregatorSwapView as ::buffa::MessageView>::decode_view_ctx(
+                            sub,
+                            __sub_ctx,
+                        )?,
+                    );
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                ctx.register_element_memory(
+                    ::core::mem::size_of::<
+                        super::super::__buffa::view::AggregatorPoolView,
+                    >(),
+                )?;
+                view.aggregator_pools
+                    .push(
+                        <super::super::__buffa::view::AggregatorPoolView as ::buffa::MessageView>::decode_view_ctx(
+                            sub,
+                            __sub_ctx,
+                        )?,
+                    );
+            }
+            15u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                ctx.register_element_memory(
+                    ::core::mem::size_of::<
+                        super::super::__buffa::view::AggregatorFeeView,
+                    >(),
+                )?;
+                view.aggregator_fees
+                    .push(
+                        <super::super::__buffa::view::AggregatorFeeView as ::buffa::MessageView>::decode_view_ctx(
+                            sub,
+                            __sub_ctx,
+                        )?,
+                    );
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
             }
@@ -7869,6 +7952,21 @@ impl<'a> ::buffa::MessageView<'a> for EventsView<'a> {
                 .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
             hook_totals: self
                 .hook_totals
+                .iter()
+                .map(|v| v.to_owned_from_source(__buffa_src))
+                .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+            aggregator_swaps: self
+                .aggregator_swaps
+                .iter()
+                .map(|v| v.to_owned_from_source(__buffa_src))
+                .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+            aggregator_pools: self
+                .aggregator_pools
+                .iter()
+                .map(|v| v.to_owned_from_source(__buffa_src))
+                .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
+            aggregator_fees: self
+                .aggregator_fees
                 .iter()
                 .map(|v| v.to_owned_from_source(__buffa_src))
                 .collect::<::core::result::Result<_, ::buffa::DecodeError>>()?,
@@ -7978,6 +8076,30 @@ impl<'a> ::buffa::ViewEncode<'a> for EventsView<'a> {
                 += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
                     + inner_size as u64;
         }
+        for v in &self.aggregator_swaps {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.aggregator_pools {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        for v in &self.aggregator_fees {
+            let __slot = __cache.reserve();
+            let inner_size = v.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
         ::buffa::saturate_size(size)
     }
     #[allow(clippy::needless_borrow)]
@@ -8079,6 +8201,30 @@ impl<'a> ::buffa::ViewEncode<'a> for EventsView<'a> {
         for v in &self.hook_totals {
             ::buffa::types::put_len_delimited_header(
                 12u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.aggregator_swaps {
+            ::buffa::types::put_len_delimited_header(
+                13u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.aggregator_pools {
+            ::buffa::types::put_len_delimited_header(
+                14u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            v.write_to(__cache, buf);
+        }
+        for v in &self.aggregator_fees {
+            ::buffa::types::put_len_delimited_header(
+                15u32,
                 u64::from(__cache.consume_next()),
                 buf,
             );
@@ -8282,6 +8428,41 @@ impl EventsOwnedView {
     ) -> &::buffa::RepeatedView<'_, super::super::__buffa::view::HookTotalsView<'_>> {
         &self.0.reborrow().hook_totals
     }
+    /// ---- fields 13-15, additive (v0.3.0) — Uniswap Aggregator Hooks ----------
+    /// Aggregator Hooks (Uniswap/v4-hooks-public, src/aggregator-hooks) wrap an
+    /// external venue (Slipstream, PancakeSwap V3, Uniswap V2/V3, Curve, Fluid,
+    /// LitePSM, UniswapX) as a v4 pool. The hook takes the whole swap in
+    /// beforeSwap via a ReturnDelta, so the PoolManager Swap log for these pools
+    /// carries amount0 = amount1 = 0. The real amounts are only in the hook's own
+    /// HookSwap event, which is what these fields carry.
+    ///
+    /// Field 13: `aggregator_swaps`
+    #[must_use]
+    pub fn aggregator_swaps(
+        &self,
+    ) -> &::buffa::RepeatedView<
+        '_,
+        super::super::__buffa::view::AggregatorSwapView<'_>,
+    > {
+        &self.0.reborrow().aggregator_swaps
+    }
+    /// Field 14: `aggregator_pools`
+    #[must_use]
+    pub fn aggregator_pools(
+        &self,
+    ) -> &::buffa::RepeatedView<
+        '_,
+        super::super::__buffa::view::AggregatorPoolView<'_>,
+    > {
+        &self.0.reborrow().aggregator_pools
+    }
+    /// Field 15: `aggregator_fees`
+    #[must_use]
+    pub fn aggregator_fees(
+        &self,
+    ) -> &::buffa::RepeatedView<'_, super::super::__buffa::view::AggregatorFeeView<'_>> {
+        &self.0.reborrow().aggregator_fees
+    }
 }
 impl ::core::convert::From<::buffa::OwnedView<EventsView<'static>>> for EventsOwnedView {
     fn from(inner: ::buffa::OwnedView<EventsView<'static>>) -> Self {
@@ -8302,4 +8483,1274 @@ for EventsOwnedView {
 impl ::buffa::HasMessageView for super::super::Events {
     type View<'a> = EventsView<'a>;
     type ViewHandle = EventsOwnedView;
+}
+/// IAggregatorHook.HookSwap(PoolId indexed poolId, address indexed sender,
+///   int256 amount0, int256 amount1, uint24 swapFee). Amounts are the swapper's
+/// deltas with v4 sign convention (negative = paid in) and INCLUDE the protocol
+/// fee; swapFee is the protocol fee in pips actually applied on this swap.
+#[derive(Clone, Debug, Default)]
+pub struct AggregatorSwapView<'a> {
+    /// \<txHash\>-\<logIndex\>
+    ///
+    /// Field 1: `id`
+    pub id: &'a str,
+    /// Field 2: `pool_id`
+    pub pool_id: &'a str,
+    /// emitting contract
+    ///
+    /// Field 3: `hook`
+    pub hook: &'a str,
+    /// from the hook-address ID byte (see aggregator.rs)
+    ///
+    /// Field 4: `source`
+    pub source: &'a str,
+    /// Field 5: `sender`
+    pub sender: &'a str,
+    /// Field 6: `amount0`
+    pub amount0: &'a str,
+    /// Field 7: `amount1`
+    pub amount1: &'a str,
+    /// Field 8: `protocol_fee_pips`
+    pub protocol_fee_pips: u32,
+    /// from the preceding ProtocolFeesCollected, "0" if none
+    ///
+    /// Field 9: `protocol_fee_amount`
+    pub protocol_fee_amount: &'a str,
+    /// Field 10: `protocol_fee_currency`
+    pub protocol_fee_currency: &'a str,
+    /// Filled by map_enriched from store_pools. verified = the pool's PoolKey.hooks
+    /// equals the emitting address — i.e. this is a real v4 aggregator pool, not a
+    /// stray contract emitting the same event signature.
+    ///
+    /// Field 11: `token0`
+    pub token0: &'a str,
+    /// Field 12: `token1`
+    pub token1: &'a str,
+    /// Field 13: `verified`
+    pub verified: bool,
+    /// Field 14: `meta`
+    pub meta: ::buffa::MessageFieldView<super::super::__buffa::view::MetaView<'a>>,
+}
+impl<'a> ::buffa::MessageView<'a> for AggregatorSwapView<'a> {
+    type Owned = super::super::AggregatorSwap;
+    fn decode_view(buf: &'a [u8]) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        let __limit = ::core::cell::Cell::new(::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT);
+        let __elem = ::core::cell::Cell::new(::buffa::DEFAULT_ELEMENT_MEMORY_LIMIT);
+        <Self as ::buffa::MessageView>::decode_view_ctx(
+            buf,
+            ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit)
+                .with_element_memory(&__elem),
+        )
+    }
+    fn decode_view_with_ctx(
+        buf: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+    }
+    #[inline]
+    fn merge_view_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        cur: &'a [u8],
+        _before_tag: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+        let _ = ctx;
+        #[allow(unused_variables)]
+        let view = self;
+        let mut cur = cur;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.id = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.pool_id = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.hook = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.source = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.sender = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.amount0 = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.amount1 = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            8u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.protocol_fee_pips = ::buffa::types::decode_uint32(&mut cur)?;
+            }
+            9u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.protocol_fee_amount = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            10u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.protocol_fee_currency = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            11u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.token0 = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.token1 = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.verified = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                match view.meta.as_mut() {
+                    Some(existing) => {
+                        ::buffa::MessageView::merge_into_view(existing, sub, __sub_ctx)?
+                    }
+                    None => {
+                        view.meta = ::buffa::MessageFieldView::set(
+                            <super::super::__buffa::view::MetaView as ::buffa::MessageView>::decode_view_ctx(
+                                sub,
+                                __sub_ctx,
+                            )?,
+                        );
+                    }
+                }
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+            }
+        }
+        ::core::result::Result::Ok(cur)
+    }
+    fn to_owned_message(
+        &self,
+    ) -> ::core::result::Result<super::super::AggregatorSwap, ::buffa::DecodeError> {
+        self.to_owned_from_source(None)
+    }
+    #[allow(clippy::useless_conversion, clippy::needless_update)]
+    fn to_owned_from_source(
+        &self,
+        __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+    ) -> ::core::result::Result<super::super::AggregatorSwap, ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::alloc::string::ToString as _;
+        let _ = __buffa_src;
+        ::core::result::Result::Ok(super::super::AggregatorSwap {
+            id: self.id.to_string(),
+            pool_id: self.pool_id.to_string(),
+            hook: self.hook.to_string(),
+            source: self.source.to_string(),
+            sender: self.sender.to_string(),
+            amount0: self.amount0.to_string(),
+            amount1: self.amount1.to_string(),
+            protocol_fee_pips: self.protocol_fee_pips,
+            protocol_fee_amount: self.protocol_fee_amount.to_string(),
+            protocol_fee_currency: self.protocol_fee_currency.to_string(),
+            token0: self.token0.to_string(),
+            token1: self.token1.to_string(),
+            verified: self.verified,
+            meta: match self.meta.as_option() {
+                Some(v) => {
+                    ::buffa::MessageField::<
+                        super::super::Meta,
+                        ::buffa::Inline<super::super::Meta>,
+                    >::some(v.to_owned_from_source(__buffa_src)?)
+                }
+                None => ::buffa::MessageField::none(),
+            },
+            ..::core::default::Default::default()
+        })
+    }
+}
+impl<'a> ::buffa::ViewEncode<'a> for AggregatorSwapView<'a> {
+    #[allow(clippy::needless_borrow, clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.id) as u64;
+        }
+        if !self.pool_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.pool_id) as u64;
+        }
+        if !self.hook.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.hook) as u64;
+        }
+        if !self.source.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source) as u64;
+        }
+        if !self.sender.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.sender) as u64;
+        }
+        if !self.amount0.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.amount0) as u64;
+        }
+        if !self.amount1.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.amount1) as u64;
+        }
+        if self.protocol_fee_pips != 0u32 {
+            size
+                += 1u64
+                    + ::buffa::types::uint32_encoded_len(self.protocol_fee_pips) as u64;
+        }
+        if !self.protocol_fee_amount.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.protocol_fee_amount)
+                        as u64;
+        }
+        if !self.protocol_fee_currency.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.protocol_fee_currency)
+                        as u64;
+        }
+        if !self.token0.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.token0) as u64;
+        }
+        if !self.token1.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.token1) as u64;
+        }
+        if self.verified {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.meta.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.meta.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        ::buffa::saturate_size(size)
+    }
+    #[allow(clippy::needless_borrow)]
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.id, buf);
+        }
+        if !self.pool_id.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.pool_id, buf);
+        }
+        if !self.hook.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.hook, buf);
+        }
+        if !self.source.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.source, buf);
+        }
+        if !self.sender.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.sender, buf);
+        }
+        if !self.amount0.is_empty() {
+            ::buffa::types::put_string_field(6u32, &self.amount0, buf);
+        }
+        if !self.amount1.is_empty() {
+            ::buffa::types::put_string_field(7u32, &self.amount1, buf);
+        }
+        if self.protocol_fee_pips != 0u32 {
+            ::buffa::types::put_uint32_field(8u32, self.protocol_fee_pips, buf);
+        }
+        if !self.protocol_fee_amount.is_empty() {
+            ::buffa::types::put_string_field(9u32, &self.protocol_fee_amount, buf);
+        }
+        if !self.protocol_fee_currency.is_empty() {
+            ::buffa::types::put_string_field(10u32, &self.protocol_fee_currency, buf);
+        }
+        if !self.token0.is_empty() {
+            ::buffa::types::put_string_field(11u32, &self.token0, buf);
+        }
+        if !self.token1.is_empty() {
+            ::buffa::types::put_string_field(12u32, &self.token1, buf);
+        }
+        if self.verified {
+            ::buffa::types::put_bool_field(13u32, self.verified, buf);
+        }
+        if self.meta.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                14u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.meta.write_to(__cache, buf);
+        }
+    }
+}
+impl<'a> ::buffa::MessageName for AggregatorSwapView<'a> {
+    const PACKAGE: &'static str = "uniswap.v4.v1";
+    const NAME: &'static str = "AggregatorSwap";
+    const FULL_NAME: &'static str = "uniswap.v4.v1.AggregatorSwap";
+    const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorSwap";
+}
+::buffa::impl_default_view_instance!(AggregatorSwapView);
+::buffa::impl_view_reborrow!(AggregatorSwapView);
+/** Self-contained, `'static` owned view of a `AggregatorSwap` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`AggregatorSwapView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`AggregatorSwapView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+#[derive(Clone, Debug)]
+pub struct AggregatorSwapOwnedView(::buffa::OwnedView<AggregatorSwapView<'static>>);
+impl AggregatorSwapOwnedView {
+    /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+    ///
+    /// The view borrows directly from the buffer's data; the buffer is
+    /// retained inside the returned handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+    /// protobuf data.
+    pub fn decode(
+        bytes: ::buffa::bytes::Bytes,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorSwapOwnedView(::buffa::OwnedView::decode(bytes)?),
+        )
+    }
+    /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+    /// max message size).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+    /// exceeds the configured limits.
+    pub fn decode_with_options(
+        bytes: ::buffa::bytes::Bytes,
+        opts: &::buffa::DecodeOptions,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorSwapOwnedView(
+                ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+            ),
+        )
+    }
+    /// Build from an owned message via an encode → decode round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+    /// message's encoded size exceeds the 2 GiB protobuf limit, or
+    /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+    /// somehow invalid (should not happen for well-formed messages).
+    pub fn from_owned(
+        msg: &super::super::AggregatorSwap,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorSwapOwnedView(::buffa::OwnedView::from_owned(msg)?),
+        )
+    }
+    /// Borrow the full [`AggregatorSwapView`] with its lifetime tied to `&self`.
+    #[must_use]
+    pub fn view(&self) -> &AggregatorSwapView<'_> {
+        self.0.reborrow()
+    }
+    /// Convert to the owned message type.
+    ///
+    /// Infallible: this type's constructors wire-decode their
+    /// buffer, and a view produced by wire decoding always
+    /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+    /// whose contract also governs handles converted from a raw
+    /// [`::buffa::OwnedView`].
+    #[must_use]
+    pub fn to_owned_message(&self) -> super::super::AggregatorSwap {
+        self.0.to_owned_message()
+    }
+    /// The underlying bytes buffer.
+    #[must_use]
+    pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+        self.0.bytes()
+    }
+    /// Consume the handle, returning the underlying bytes buffer.
+    #[must_use]
+    pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+        self.0.into_bytes()
+    }
+    /// \<txHash\>-\<logIndex\>
+    ///
+    /// Field 1: `id`
+    #[must_use]
+    pub fn id(&self) -> &'_ str {
+        self.0.reborrow().id
+    }
+    /// Field 2: `pool_id`
+    #[must_use]
+    pub fn pool_id(&self) -> &'_ str {
+        self.0.reborrow().pool_id
+    }
+    /// emitting contract
+    ///
+    /// Field 3: `hook`
+    #[must_use]
+    pub fn hook(&self) -> &'_ str {
+        self.0.reborrow().hook
+    }
+    /// from the hook-address ID byte (see aggregator.rs)
+    ///
+    /// Field 4: `source`
+    #[must_use]
+    pub fn source(&self) -> &'_ str {
+        self.0.reborrow().source
+    }
+    /// Field 5: `sender`
+    #[must_use]
+    pub fn sender(&self) -> &'_ str {
+        self.0.reborrow().sender
+    }
+    /// Field 6: `amount0`
+    #[must_use]
+    pub fn amount0(&self) -> &'_ str {
+        self.0.reborrow().amount0
+    }
+    /// Field 7: `amount1`
+    #[must_use]
+    pub fn amount1(&self) -> &'_ str {
+        self.0.reborrow().amount1
+    }
+    /// Field 8: `protocol_fee_pips`
+    #[must_use]
+    pub fn protocol_fee_pips(&self) -> u32 {
+        self.0.reborrow().protocol_fee_pips
+    }
+    /// from the preceding ProtocolFeesCollected, "0" if none
+    ///
+    /// Field 9: `protocol_fee_amount`
+    #[must_use]
+    pub fn protocol_fee_amount(&self) -> &'_ str {
+        self.0.reborrow().protocol_fee_amount
+    }
+    /// Field 10: `protocol_fee_currency`
+    #[must_use]
+    pub fn protocol_fee_currency(&self) -> &'_ str {
+        self.0.reborrow().protocol_fee_currency
+    }
+    /// Filled by map_enriched from store_pools. verified = the pool's PoolKey.hooks
+    /// equals the emitting address — i.e. this is a real v4 aggregator pool, not a
+    /// stray contract emitting the same event signature.
+    ///
+    /// Field 11: `token0`
+    #[must_use]
+    pub fn token0(&self) -> &'_ str {
+        self.0.reborrow().token0
+    }
+    /// Field 12: `token1`
+    #[must_use]
+    pub fn token1(&self) -> &'_ str {
+        self.0.reborrow().token1
+    }
+    /// Field 13: `verified`
+    #[must_use]
+    pub fn verified(&self) -> bool {
+        self.0.reborrow().verified
+    }
+    /// Field 14: `meta`
+    #[must_use]
+    pub fn meta(
+        &self,
+    ) -> &::buffa::MessageFieldView<super::super::__buffa::view::MetaView<'_>> {
+        &self.0.reborrow().meta
+    }
+}
+impl ::core::convert::From<::buffa::OwnedView<AggregatorSwapView<'static>>>
+for AggregatorSwapOwnedView {
+    fn from(inner: ::buffa::OwnedView<AggregatorSwapView<'static>>) -> Self {
+        AggregatorSwapOwnedView(inner)
+    }
+}
+impl ::core::convert::From<AggregatorSwapOwnedView>
+for ::buffa::OwnedView<AggregatorSwapView<'static>> {
+    fn from(wrapper: AggregatorSwapOwnedView) -> Self {
+        wrapper.0
+    }
+}
+impl ::core::convert::AsRef<::buffa::OwnedView<AggregatorSwapView<'static>>>
+for AggregatorSwapOwnedView {
+    fn as_ref(&self) -> &::buffa::OwnedView<AggregatorSwapView<'static>> {
+        &self.0
+    }
+}
+impl ::buffa::HasMessageView for super::super::AggregatorSwap {
+    type View<'a> = AggregatorSwapView<'a>;
+    type ViewHandle = AggregatorSwapOwnedView;
+}
+/// AggregatorPoolRegistered(PoolId indexed poolId), emitted in beforeInitialize.
+#[derive(Clone, Debug, Default)]
+pub struct AggregatorPoolView<'a> {
+    /// Field 1: `pool_id`
+    pub pool_id: &'a str,
+    /// Field 2: `hook`
+    pub hook: &'a str,
+    /// Field 3: `source`
+    pub source: &'a str,
+    /// Field 4: `token0`
+    pub token0: &'a str,
+    /// Field 5: `token1`
+    pub token1: &'a str,
+    /// Field 6: `verified`
+    pub verified: bool,
+    /// Field 7: `meta`
+    pub meta: ::buffa::MessageFieldView<super::super::__buffa::view::MetaView<'a>>,
+}
+impl<'a> ::buffa::MessageView<'a> for AggregatorPoolView<'a> {
+    type Owned = super::super::AggregatorPool;
+    fn decode_view(buf: &'a [u8]) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        let __limit = ::core::cell::Cell::new(::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT);
+        let __elem = ::core::cell::Cell::new(::buffa::DEFAULT_ELEMENT_MEMORY_LIMIT);
+        <Self as ::buffa::MessageView>::decode_view_ctx(
+            buf,
+            ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit)
+                .with_element_memory(&__elem),
+        )
+    }
+    fn decode_view_with_ctx(
+        buf: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+    }
+    #[inline]
+    fn merge_view_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        cur: &'a [u8],
+        _before_tag: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+        let _ = ctx;
+        #[allow(unused_variables)]
+        let view = self;
+        let mut cur = cur;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.pool_id = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.hook = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.source = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.token0 = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.token1 = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.verified = ::buffa::types::decode_bool(&mut cur)?;
+            }
+            7u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                match view.meta.as_mut() {
+                    Some(existing) => {
+                        ::buffa::MessageView::merge_into_view(existing, sub, __sub_ctx)?
+                    }
+                    None => {
+                        view.meta = ::buffa::MessageFieldView::set(
+                            <super::super::__buffa::view::MetaView as ::buffa::MessageView>::decode_view_ctx(
+                                sub,
+                                __sub_ctx,
+                            )?,
+                        );
+                    }
+                }
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+            }
+        }
+        ::core::result::Result::Ok(cur)
+    }
+    fn to_owned_message(
+        &self,
+    ) -> ::core::result::Result<super::super::AggregatorPool, ::buffa::DecodeError> {
+        self.to_owned_from_source(None)
+    }
+    #[allow(clippy::useless_conversion, clippy::needless_update)]
+    fn to_owned_from_source(
+        &self,
+        __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+    ) -> ::core::result::Result<super::super::AggregatorPool, ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::alloc::string::ToString as _;
+        let _ = __buffa_src;
+        ::core::result::Result::Ok(super::super::AggregatorPool {
+            pool_id: self.pool_id.to_string(),
+            hook: self.hook.to_string(),
+            source: self.source.to_string(),
+            token0: self.token0.to_string(),
+            token1: self.token1.to_string(),
+            verified: self.verified,
+            meta: match self.meta.as_option() {
+                Some(v) => {
+                    ::buffa::MessageField::<
+                        super::super::Meta,
+                        ::buffa::Inline<super::super::Meta>,
+                    >::some(v.to_owned_from_source(__buffa_src)?)
+                }
+                None => ::buffa::MessageField::none(),
+            },
+            ..::core::default::Default::default()
+        })
+    }
+}
+impl<'a> ::buffa::ViewEncode<'a> for AggregatorPoolView<'a> {
+    #[allow(clippy::needless_borrow, clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.pool_id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.pool_id) as u64;
+        }
+        if !self.hook.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.hook) as u64;
+        }
+        if !self.source.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.source) as u64;
+        }
+        if !self.token0.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.token0) as u64;
+        }
+        if !self.token1.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.token1) as u64;
+        }
+        if self.verified {
+            size += 1u64 + ::buffa::types::BOOL_ENCODED_LEN as u64;
+        }
+        if self.meta.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.meta.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        ::buffa::saturate_size(size)
+    }
+    #[allow(clippy::needless_borrow)]
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.pool_id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.pool_id, buf);
+        }
+        if !self.hook.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.hook, buf);
+        }
+        if !self.source.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.source, buf);
+        }
+        if !self.token0.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.token0, buf);
+        }
+        if !self.token1.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.token1, buf);
+        }
+        if self.verified {
+            ::buffa::types::put_bool_field(6u32, self.verified, buf);
+        }
+        if self.meta.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                7u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.meta.write_to(__cache, buf);
+        }
+    }
+}
+impl<'a> ::buffa::MessageName for AggregatorPoolView<'a> {
+    const PACKAGE: &'static str = "uniswap.v4.v1";
+    const NAME: &'static str = "AggregatorPool";
+    const FULL_NAME: &'static str = "uniswap.v4.v1.AggregatorPool";
+    const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorPool";
+}
+::buffa::impl_default_view_instance!(AggregatorPoolView);
+::buffa::impl_view_reborrow!(AggregatorPoolView);
+/** Self-contained, `'static` owned view of a `AggregatorPool` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`AggregatorPoolView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`AggregatorPoolView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+#[derive(Clone, Debug)]
+pub struct AggregatorPoolOwnedView(::buffa::OwnedView<AggregatorPoolView<'static>>);
+impl AggregatorPoolOwnedView {
+    /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+    ///
+    /// The view borrows directly from the buffer's data; the buffer is
+    /// retained inside the returned handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+    /// protobuf data.
+    pub fn decode(
+        bytes: ::buffa::bytes::Bytes,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorPoolOwnedView(::buffa::OwnedView::decode(bytes)?),
+        )
+    }
+    /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+    /// max message size).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+    /// exceeds the configured limits.
+    pub fn decode_with_options(
+        bytes: ::buffa::bytes::Bytes,
+        opts: &::buffa::DecodeOptions,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorPoolOwnedView(
+                ::buffa::OwnedView::decode_with_options(bytes, opts)?,
+            ),
+        )
+    }
+    /// Build from an owned message via an encode → decode round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+    /// message's encoded size exceeds the 2 GiB protobuf limit, or
+    /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+    /// somehow invalid (should not happen for well-formed messages).
+    pub fn from_owned(
+        msg: &super::super::AggregatorPool,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorPoolOwnedView(::buffa::OwnedView::from_owned(msg)?),
+        )
+    }
+    /// Borrow the full [`AggregatorPoolView`] with its lifetime tied to `&self`.
+    #[must_use]
+    pub fn view(&self) -> &AggregatorPoolView<'_> {
+        self.0.reborrow()
+    }
+    /// Convert to the owned message type.
+    ///
+    /// Infallible: this type's constructors wire-decode their
+    /// buffer, and a view produced by wire decoding always
+    /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+    /// whose contract also governs handles converted from a raw
+    /// [`::buffa::OwnedView`].
+    #[must_use]
+    pub fn to_owned_message(&self) -> super::super::AggregatorPool {
+        self.0.to_owned_message()
+    }
+    /// The underlying bytes buffer.
+    #[must_use]
+    pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+        self.0.bytes()
+    }
+    /// Consume the handle, returning the underlying bytes buffer.
+    #[must_use]
+    pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+        self.0.into_bytes()
+    }
+    /// Field 1: `pool_id`
+    #[must_use]
+    pub fn pool_id(&self) -> &'_ str {
+        self.0.reborrow().pool_id
+    }
+    /// Field 2: `hook`
+    #[must_use]
+    pub fn hook(&self) -> &'_ str {
+        self.0.reborrow().hook
+    }
+    /// Field 3: `source`
+    #[must_use]
+    pub fn source(&self) -> &'_ str {
+        self.0.reborrow().source
+    }
+    /// Field 4: `token0`
+    #[must_use]
+    pub fn token0(&self) -> &'_ str {
+        self.0.reborrow().token0
+    }
+    /// Field 5: `token1`
+    #[must_use]
+    pub fn token1(&self) -> &'_ str {
+        self.0.reborrow().token1
+    }
+    /// Field 6: `verified`
+    #[must_use]
+    pub fn verified(&self) -> bool {
+        self.0.reborrow().verified
+    }
+    /// Field 7: `meta`
+    #[must_use]
+    pub fn meta(
+        &self,
+    ) -> &::buffa::MessageFieldView<super::super::__buffa::view::MetaView<'_>> {
+        &self.0.reborrow().meta
+    }
+}
+impl ::core::convert::From<::buffa::OwnedView<AggregatorPoolView<'static>>>
+for AggregatorPoolOwnedView {
+    fn from(inner: ::buffa::OwnedView<AggregatorPoolView<'static>>) -> Self {
+        AggregatorPoolOwnedView(inner)
+    }
+}
+impl ::core::convert::From<AggregatorPoolOwnedView>
+for ::buffa::OwnedView<AggregatorPoolView<'static>> {
+    fn from(wrapper: AggregatorPoolOwnedView) -> Self {
+        wrapper.0
+    }
+}
+impl ::core::convert::AsRef<::buffa::OwnedView<AggregatorPoolView<'static>>>
+for AggregatorPoolOwnedView {
+    fn as_ref(&self) -> &::buffa::OwnedView<AggregatorPoolView<'static>> {
+        &self.0
+    }
+}
+impl ::buffa::HasMessageView for super::super::AggregatorPool {
+    type View<'a> = AggregatorPoolView<'a>;
+    type ViewHandle = AggregatorPoolOwnedView;
+}
+/// ProtocolFees.ProtocolFeesCollected(address indexed recipient,
+///   Currency indexed currency, uint256 amount). recipient = the TokenJar.
+#[derive(Clone, Debug, Default)]
+pub struct AggregatorFeeView<'a> {
+    /// Field 1: `id`
+    pub id: &'a str,
+    /// Field 2: `hook`
+    pub hook: &'a str,
+    /// Field 3: `recipient`
+    pub recipient: &'a str,
+    /// Field 4: `currency`
+    pub currency: &'a str,
+    /// Field 5: `amount`
+    pub amount: &'a str,
+    /// Field 6: `meta`
+    pub meta: ::buffa::MessageFieldView<super::super::__buffa::view::MetaView<'a>>,
+}
+impl<'a> ::buffa::MessageView<'a> for AggregatorFeeView<'a> {
+    type Owned = super::super::AggregatorFee;
+    fn decode_view(buf: &'a [u8]) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        let __limit = ::core::cell::Cell::new(::buffa::DEFAULT_UNKNOWN_FIELD_LIMIT);
+        let __elem = ::core::cell::Cell::new(::buffa::DEFAULT_ELEMENT_MEMORY_LIMIT);
+        <Self as ::buffa::MessageView>::decode_view_ctx(
+            buf,
+            ::buffa::DecodeContext::new(::buffa::RECURSION_LIMIT, &__limit)
+                .with_element_memory(&__elem),
+        )
+    }
+    fn decode_view_with_ctx(
+        buf: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        <Self as ::buffa::MessageView>::decode_view_ctx(buf, ctx)
+    }
+    #[inline]
+    fn merge_view_field(
+        &mut self,
+        tag: ::buffa::encoding::Tag,
+        cur: &'a [u8],
+        _before_tag: &'a [u8],
+        ctx: ::buffa::DecodeContext<'_>,
+    ) -> ::core::result::Result<&'a [u8], ::buffa::DecodeError> {
+        let _ = ctx;
+        #[allow(unused_variables)]
+        let view = self;
+        let mut cur = cur;
+        match tag.field_number() {
+            1u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.id = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            2u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.hook = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            3u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.recipient = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            4u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.currency = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            5u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.amount = ::buffa::types::borrow_str(&mut cur)?;
+            }
+            6u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                let __sub_ctx = ctx.descend()?;
+                let sub = ::buffa::types::borrow_bytes(&mut cur)?;
+                match view.meta.as_mut() {
+                    Some(existing) => {
+                        ::buffa::MessageView::merge_into_view(existing, sub, __sub_ctx)?
+                    }
+                    None => {
+                        view.meta = ::buffa::MessageFieldView::set(
+                            <super::super::__buffa::view::MetaView as ::buffa::MessageView>::decode_view_ctx(
+                                sub,
+                                __sub_ctx,
+                            )?,
+                        );
+                    }
+                }
+            }
+            _ => {
+                ::buffa::encoding::skip_field_depth(tag, &mut cur, ctx.depth())?;
+            }
+        }
+        ::core::result::Result::Ok(cur)
+    }
+    fn to_owned_message(
+        &self,
+    ) -> ::core::result::Result<super::super::AggregatorFee, ::buffa::DecodeError> {
+        self.to_owned_from_source(None)
+    }
+    #[allow(clippy::useless_conversion, clippy::needless_update)]
+    fn to_owned_from_source(
+        &self,
+        __buffa_src: ::core::option::Option<&::buffa::bytes::Bytes>,
+    ) -> ::core::result::Result<super::super::AggregatorFee, ::buffa::DecodeError> {
+        #[allow(unused_imports)]
+        use ::buffa::alloc::string::ToString as _;
+        let _ = __buffa_src;
+        ::core::result::Result::Ok(super::super::AggregatorFee {
+            id: self.id.to_string(),
+            hook: self.hook.to_string(),
+            recipient: self.recipient.to_string(),
+            currency: self.currency.to_string(),
+            amount: self.amount.to_string(),
+            meta: match self.meta.as_option() {
+                Some(v) => {
+                    ::buffa::MessageField::<
+                        super::super::Meta,
+                        ::buffa::Inline<super::super::Meta>,
+                    >::some(v.to_owned_from_source(__buffa_src)?)
+                }
+                None => ::buffa::MessageField::none(),
+            },
+            ..::core::default::Default::default()
+        })
+    }
+}
+impl<'a> ::buffa::ViewEncode<'a> for AggregatorFeeView<'a> {
+    #[allow(clippy::needless_borrow, clippy::let_and_return)]
+    fn compute_size(&self, __cache: &mut ::buffa::SizeCache) -> u32 {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        let mut size = 0u64;
+        if !self.id.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.id) as u64;
+        }
+        if !self.hook.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.hook) as u64;
+        }
+        if !self.recipient.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.recipient) as u64;
+        }
+        if !self.currency.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.currency) as u64;
+        }
+        if !self.amount.is_empty() {
+            size += 1u64 + ::buffa::types::string_encoded_len(&self.amount) as u64;
+        }
+        if self.meta.is_set() {
+            let __slot = __cache.reserve();
+            let inner_size = self.meta.compute_size(__cache);
+            __cache.set(__slot, inner_size);
+            size
+                += 1u64 + ::buffa::encoding::varint_len(inner_size as u64) as u64
+                    + inner_size as u64;
+        }
+        ::buffa::saturate_size(size)
+    }
+    #[allow(clippy::needless_borrow)]
+    fn write_to(
+        &self,
+        __cache: &mut ::buffa::SizeCache,
+        buf: &mut impl ::buffa::EncodeSink,
+    ) {
+        #[allow(unused_imports)]
+        use ::buffa::Enumeration as _;
+        if !self.id.is_empty() {
+            ::buffa::types::put_string_field(1u32, &self.id, buf);
+        }
+        if !self.hook.is_empty() {
+            ::buffa::types::put_string_field(2u32, &self.hook, buf);
+        }
+        if !self.recipient.is_empty() {
+            ::buffa::types::put_string_field(3u32, &self.recipient, buf);
+        }
+        if !self.currency.is_empty() {
+            ::buffa::types::put_string_field(4u32, &self.currency, buf);
+        }
+        if !self.amount.is_empty() {
+            ::buffa::types::put_string_field(5u32, &self.amount, buf);
+        }
+        if self.meta.is_set() {
+            ::buffa::types::put_len_delimited_header(
+                6u32,
+                u64::from(__cache.consume_next()),
+                buf,
+            );
+            self.meta.write_to(__cache, buf);
+        }
+    }
+}
+impl<'a> ::buffa::MessageName for AggregatorFeeView<'a> {
+    const PACKAGE: &'static str = "uniswap.v4.v1";
+    const NAME: &'static str = "AggregatorFee";
+    const FULL_NAME: &'static str = "uniswap.v4.v1.AggregatorFee";
+    const TYPE_URL: &'static str = "type.googleapis.com/uniswap.v4.v1.AggregatorFee";
+}
+::buffa::impl_default_view_instance!(AggregatorFeeView);
+::buffa::impl_view_reborrow!(AggregatorFeeView);
+/** Self-contained, `'static` owned view of a `AggregatorFee` message.
+
+ Wraps [`::buffa::OwnedView`]`<`[`AggregatorFeeView`]`<'static>>`: the decoded view and the [`::buffa::bytes::Bytes`] buffer it borrows from travel together, so the handle is `'static` and `Send + Sync` — suitable for async handlers, spawned tasks, and anywhere a `'static` bound is required.
+
+ Field accessors return borrows tied to `&self`. Use [`Self::view`] to get the full [`AggregatorFeeView`] when you need struct patterns, iteration helpers, or to pass the view to lifetime-parameterised code.*/
+#[derive(Clone, Debug)]
+pub struct AggregatorFeeOwnedView(::buffa::OwnedView<AggregatorFeeView<'static>>);
+impl AggregatorFeeOwnedView {
+    /// Decode an owned view from a [`::buffa::bytes::Bytes`] buffer.
+    ///
+    /// The view borrows directly from the buffer's data; the buffer is
+    /// retained inside the returned handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer contains invalid
+    /// protobuf data.
+    pub fn decode(
+        bytes: ::buffa::bytes::Bytes,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorFeeOwnedView(::buffa::OwnedView::decode(bytes)?),
+        )
+    }
+    /// Decode with custom [`::buffa::DecodeOptions`] (recursion limit,
+    /// max message size).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError`] if the buffer is invalid or
+    /// exceeds the configured limits.
+    pub fn decode_with_options(
+        bytes: ::buffa::bytes::Bytes,
+        opts: &::buffa::DecodeOptions,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorFeeOwnedView(::buffa::OwnedView::decode_with_options(bytes, opts)?),
+        )
+    }
+    /// Build from an owned message via an encode → decode round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`::buffa::DecodeError::MessageTooLarge`] if the
+    /// message's encoded size exceeds the 2 GiB protobuf limit, or
+    /// another [`::buffa::DecodeError`] if the re-encoded bytes are
+    /// somehow invalid (should not happen for well-formed messages).
+    pub fn from_owned(
+        msg: &super::super::AggregatorFee,
+    ) -> ::core::result::Result<Self, ::buffa::DecodeError> {
+        ::core::result::Result::Ok(
+            AggregatorFeeOwnedView(::buffa::OwnedView::from_owned(msg)?),
+        )
+    }
+    /// Borrow the full [`AggregatorFeeView`] with its lifetime tied to `&self`.
+    #[must_use]
+    pub fn view(&self) -> &AggregatorFeeView<'_> {
+        self.0.reborrow()
+    }
+    /// Convert to the owned message type.
+    ///
+    /// Infallible: this type's constructors wire-decode their
+    /// buffer, and a view produced by wire decoding always
+    /// converts. Delegates to [`::buffa::OwnedView::to_owned_message`],
+    /// whose contract also governs handles converted from a raw
+    /// [`::buffa::OwnedView`].
+    #[must_use]
+    pub fn to_owned_message(&self) -> super::super::AggregatorFee {
+        self.0.to_owned_message()
+    }
+    /// The underlying bytes buffer.
+    #[must_use]
+    pub fn bytes(&self) -> &::buffa::bytes::Bytes {
+        self.0.bytes()
+    }
+    /// Consume the handle, returning the underlying bytes buffer.
+    #[must_use]
+    pub fn into_bytes(self) -> ::buffa::bytes::Bytes {
+        self.0.into_bytes()
+    }
+    /// Field 1: `id`
+    #[must_use]
+    pub fn id(&self) -> &'_ str {
+        self.0.reborrow().id
+    }
+    /// Field 2: `hook`
+    #[must_use]
+    pub fn hook(&self) -> &'_ str {
+        self.0.reborrow().hook
+    }
+    /// Field 3: `recipient`
+    #[must_use]
+    pub fn recipient(&self) -> &'_ str {
+        self.0.reborrow().recipient
+    }
+    /// Field 4: `currency`
+    #[must_use]
+    pub fn currency(&self) -> &'_ str {
+        self.0.reborrow().currency
+    }
+    /// Field 5: `amount`
+    #[must_use]
+    pub fn amount(&self) -> &'_ str {
+        self.0.reborrow().amount
+    }
+    /// Field 6: `meta`
+    #[must_use]
+    pub fn meta(
+        &self,
+    ) -> &::buffa::MessageFieldView<super::super::__buffa::view::MetaView<'_>> {
+        &self.0.reborrow().meta
+    }
+}
+impl ::core::convert::From<::buffa::OwnedView<AggregatorFeeView<'static>>>
+for AggregatorFeeOwnedView {
+    fn from(inner: ::buffa::OwnedView<AggregatorFeeView<'static>>) -> Self {
+        AggregatorFeeOwnedView(inner)
+    }
+}
+impl ::core::convert::From<AggregatorFeeOwnedView>
+for ::buffa::OwnedView<AggregatorFeeView<'static>> {
+    fn from(wrapper: AggregatorFeeOwnedView) -> Self {
+        wrapper.0
+    }
+}
+impl ::core::convert::AsRef<::buffa::OwnedView<AggregatorFeeView<'static>>>
+for AggregatorFeeOwnedView {
+    fn as_ref(&self) -> &::buffa::OwnedView<AggregatorFeeView<'static>> {
+        &self.0
+    }
+}
+impl ::buffa::HasMessageView for super::super::AggregatorFee {
+    type View<'a> = AggregatorFeeView<'a>;
+    type ViewHandle = AggregatorFeeOwnedView;
 }

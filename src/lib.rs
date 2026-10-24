@@ -36,6 +36,7 @@
 //! re-running the enrichment does not re-decode the chain.
 
 mod abi;
+mod aggregator;
 mod arrakis;
 mod db_out;
 mod enrich;
@@ -79,6 +80,7 @@ pub fn map_events(blk: Block) -> Result<proto::Events, Error> {
     pool_manager::extract(&blk, &mut events);
     position_manager::extract(&blk, &mut events);
     arrakis::extract(&blk, &mut events);
+    aggregator::extract(&blk, &mut events);
 
     Ok(events)
 }

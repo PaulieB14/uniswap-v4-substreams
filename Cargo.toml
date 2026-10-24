@@ -1,6 +1,6 @@
 [package]
 name = "uniswap-v4-substreams"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 
 [lib]
@@ -17,6 +17,9 @@ hex-literal = "0.4"
 
 [target.wasm32-unknown-unknown.dependencies]
 getrandom = { version = "0.2", features = ["custom"] }
+
+[dev-dependencies]
+tiny-keccak = { version = "2", features = ["keccak"] }
 
 [build-dependencies]
 anyhow = "1"

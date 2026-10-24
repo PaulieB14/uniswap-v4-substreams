@@ -142,6 +142,46 @@ module's `initialBlock`. They are true lifetime figures **only** when run from t
 window started", with nothing on the row to say so. Enriched swap rows at least carry the
 `token0 = ''` sentinel; totals have no equivalent.
 
+## Uniswap Aggregator Hooks (v0.3.0)
+
+Uniswap v4 DEX on Base now includes [Aggregator Hooks](https://blog.uniswap.org/aggregator-hooks-are-now-live)
+(live Oct 22, 2026). Each one wraps an outside venue as a v4 pool
+([Uniswap/v4-hooks-public `src/aggregator-hooks`](https://github.com/Uniswap/v4-hooks-public/tree/main/src/aggregator-hooks)).
+
+**Why this needs its own tables.** The hook takes the whole trade in `beforeSwap`, so the
+PoolManager `Swap` log for an aggregator pool shows `amount0 = amount1 = 0`. The real
+amounts are only in the hook's `HookSwap` event. On Base blocks 52865000–52867900, 10 of 10
+`swap` rows on aggregator pools had zero amounts.
+
+| Table | From | Notes |
+|---|---|---|
+| `aggregator_pool` | `AggregatorPoolRegistered(poolId)` | hook, `source`, tokens, `verified` |
+| `aggregator_swap` | `HookSwap(poolId, sender, amount0, amount1, swapFee)` | real signed amounts, protocol fee pips and amount |
+| `aggregator_fee` | `ProtocolFeesCollected(recipient, currency, amount)` | the fee sent to the TokenJar |
+| view `aggregator_source_daily` | `aggregator_swap` | daily swaps, volume and fees per venue |
+
+- **No hard-coded addresses.** Events are matched by signature from any contract. A row is
+  `verified` only when the pool's `PoolKey.hooks` (from `store_pools`) equals the emitter, so new
+  hooks are picked up automatically. Filter on `verified`.
+- **`source`** comes from the first byte of the hook address, per Uniswap's ID table: `A1`
+  Slipstream, `93` PancakeSwap V3, `03` Uniswap V3, `02` Uniswap V2, `C1`/`C2` Curve,
+  `F1`/`F2`/`F3` Fluid, `95` LitePSM, `58` UniswapX. Anything else is `unknown`.
+- **Protocol fee:** `protocolFeeMultiplier = 25`, applied to the PoolManager's protocol fee and
+  taken in the unspecified currency. It goes to the TokenJar (`0x9bd25e67…168c` on Base), which
+  feeds the UNI burn.
+- **Additive:** existing tables are byte-identical to v0.2.0 (112,374 of 112,374 changes, blocks 52865000–52868000).
+
+Aggregator hooks seen on Base (they answer `aggregatorHookVersion()` on-chain; Uniswap has not
+published a Base address list yet):
+
+| Hook | Version | Wrapped factory | Pools |
+|---|---|---|---|
+| `0xa1dfe862f1111f5e9d466fd4d7297d7d4fa76888` | SlipstreamAggregator v1.0 | `0xf8f2eb49…61ef` | 124 |
+| `0xa1d866042c0989570cc35ce102c03d14184ee888` | SlipstreamAggregator v1.0 | `0x5e7bb104…809a` | 142 |
+| `0xa1c07422cf2074b493ec756e38c52525aba82888` | SlipstreamAggregator v1.0 | `0xade65c38…716a` | 73 |
+| `0x9388fccc70a90e268dbe8a4fbc5e7024ebf86888` | PancakeSwapV3Aggregator v1.0 | `0x0bfbcf9f…1865` | 70 |
+| `0xb23f731949145e158e656e1abe128c5e617a6888` | 1.0.0 (ID byte not in Uniswap's table → `unknown`) | n/a | 5 |
+
 ## Known gaps
 
 - **USD pricing is wired but unproven at scale.** `store_prices` maintains the native price off
